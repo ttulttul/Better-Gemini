@@ -19,6 +19,10 @@ Custom ComfyUI node(s) for generating images with Google Gemini via the official
   - Inputs: prompt, model, prompt_images (optional), aspect ratio, resolution / width+height, temperature, top_p/top_k, max tokens, thinking difficulty, seed.
   - Outputs: `IMAGE`, `STRING` (any returned text / notes).
 
+## Example Workflow
+
+![Better Gemini example workflow](examples/better-gemini-workflow.png)
+
 ## Notes
 
 - The node imports `google-genai` lazily so ComfyUI can still boot even if dependencies aren’t installed yet; execution will raise a clear error until installed.
