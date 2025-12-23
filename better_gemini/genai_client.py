@@ -2,9 +2,11 @@ from __future__ import annotations
 
 import asyncio
 import inspect
+import json
 import logging
 import os
 from typing import Any
+from urllib.parse import urlencode
 
 from .core import BetterGeminiError, BetterGeminiRequest, extract_text_and_images, normalize_seed
 
@@ -110,6 +112,94 @@ def _call_generate_content(client: Any, *, model: str, contents: Any, config: An
     return generate_fn(**kwargs)
 
 
+def _build_image_config_patch(request: BetterGeminiRequest) -> dict[str, Any] | None:
+    image_cfg: dict[str, Any] = {}
+    if request.image_aspect_ratio:
+        image_cfg["aspectRatio"] = request.image_aspect_ratio
+    if request.image_resolution:
+        image_cfg["imageSize"] = request.image_resolution
+    if request.image_width and request.image_height:
+        image_cfg["width"] = request.image_width
+        image_cfg["height"] = request.image_height
+    if not image_cfg:
+        return None
+    return {"imageConfig": image_cfg}
+
+
+def _merge_generation_config_patch(target: dict[str, Any], patch: dict[str, Any]) -> None:
+    for key, value in patch.items():
+        if (
+            key == "imageConfig"
+            and key in target
+            and isinstance(target.get(key), dict)
+            and isinstance(value, dict)
+        ):
+            target[key] = {**target[key], **value}
+        else:
+            target[key] = value
+
+
+def _call_generate_content_with_generation_config_patch(
+    client: Any,
+    *,
+    model: str,
+    contents: Any,
+    config: Any,
+    generation_config_patch: dict[str, Any],
+) -> Any:
+    try:
+        from google.genai import models as genai_models  # type: ignore[import-not-found]
+        from google.genai import types  # type: ignore[import-not-found]
+        from google.genai import _common as genai_common  # type: ignore[import-not-found]
+    except Exception:
+        logger.debug("Falling back to SDK generate_content (failed to import genai internals).", exc_info=True)
+        return _call_generate_content(client, model=model, contents=contents, config=config)
+
+    parameter_model = types._GenerateContentParameters(model=model, contents=contents, config=config)
+    api_client = client._api_client
+
+    if api_client.vertexai:
+        request_dict = genai_models._GenerateContentParameters_to_vertex(api_client, parameter_model)
+        request_url_dict = request_dict.get("_url")
+        path = "{model}:generateContent".format_map(request_url_dict) if request_url_dict else "{model}:generateContent"
+    else:
+        request_dict = genai_models._GenerateContentParameters_to_mldev(api_client, parameter_model)
+        request_url_dict = request_dict.get("_url")
+        path = "{model}:generateContent".format_map(request_url_dict) if request_url_dict else "{model}:generateContent"
+
+    query_params = request_dict.get("_query")
+    if query_params:
+        path = f"{path}?{urlencode(query_params)}"
+
+    request_dict.pop("config", None)
+    gen_cfg = request_dict.get("generationConfig")
+    if gen_cfg is None:
+        gen_cfg = {}
+        request_dict["generationConfig"] = gen_cfg
+    if isinstance(gen_cfg, dict):
+        _merge_generation_config_patch(gen_cfg, generation_config_patch)
+    else:
+        request_dict["generationConfig"] = generation_config_patch
+
+    http_options = None
+    if (
+        parameter_model.config is not None
+        and getattr(parameter_model.config, "http_options", None) is not None
+    ):
+        http_options = parameter_model.config.http_options
+
+    request_dict = genai_common.convert_to_dict(request_dict)
+    request_dict = genai_common.encode_unserializable_types(request_dict)
+    response = api_client.request("post", path, request_dict, http_options)
+
+    response_dict = {} if not response.body else json.loads(response.body)
+    if api_client.vertexai:
+        response_dict = genai_models._GenerateContentResponse_from_vertex(response_dict)
+    else:
+        response_dict = genai_models._GenerateContentResponse_from_mldev(response_dict)
+    return response_dict
+
+
 def _build_contents(types_module: Any, *, prompt: str, input_images: tuple[bytes, ...]) -> Any:
     if not input_images:
         return prompt
@@ -161,13 +251,28 @@ def generate_image_sync(
     client = genai.Client(api_key=resolved_api_key)
     cfg = _build_types_config(types, request)
     contents = _build_contents(types, prompt=prompt, input_images=request.input_images)
+    generation_config_patch = _build_image_config_patch(request)
     logger.debug(
         "Calling Gemini generate_content with model=%s modalities=%s prompt_images=%d",
         request.model,
         request.response_modalities,
         len(request.input_images),
     )
-    response = _call_generate_content(client, model=request.model, contents=contents, config=cfg)
+    if generation_config_patch:
+        logger.debug(
+            "Applying generationConfig patch (keys=%s) for model=%s",
+            sorted(generation_config_patch.keys()),
+            request.model,
+        )
+        response = _call_generate_content_with_generation_config_patch(
+            client,
+            model=request.model,
+            contents=contents,
+            config=cfg,
+            generation_config_patch=generation_config_patch,
+        )
+    else:
+        response = _call_generate_content(client, model=request.model, contents=contents, config=cfg)
 
     text, images = extract_text_and_images(response)
     return text, images

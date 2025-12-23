@@ -1,6 +1,7 @@
 import unittest
 
-from better_gemini.genai_client import _build_contents
+from better_gemini.core import BetterGeminiRequest
+from better_gemini.genai_client import _build_contents, _build_image_config_patch
 
 
 class _Part:
@@ -43,7 +44,28 @@ class GenaiClientTests(unittest.TestCase):
             ],
         )
 
+    def test_build_image_config_patch_none_when_unset(self):
+        req = BetterGeminiRequest(model="m", prompt="p", response_modalities=("IMAGE",))
+        self.assertIsNone(_build_image_config_patch(req))
+
+    def test_build_image_config_patch_sets_image_size(self):
+        req = BetterGeminiRequest(model="m", prompt="p", response_modalities=("IMAGE",), image_resolution="2K")
+        self.assertEqual(_build_image_config_patch(req), {"imageConfig": {"imageSize": "2K"}})
+
+    def test_build_image_config_patch_sets_aspect_ratio(self):
+        req = BetterGeminiRequest(model="m", prompt="p", response_modalities=("IMAGE",), image_aspect_ratio="5:4")
+        self.assertEqual(_build_image_config_patch(req), {"imageConfig": {"aspectRatio": "5:4"}})
+
+    def test_build_image_config_patch_sets_width_height(self):
+        req = BetterGeminiRequest(
+            model="m",
+            prompt="p",
+            response_modalities=("IMAGE",),
+            image_width=640,
+            image_height=480,
+        )
+        self.assertEqual(_build_image_config_patch(req), {"imageConfig": {"width": 640, "height": 480}})
+
 
 if __name__ == "__main__":
     unittest.main()
-
