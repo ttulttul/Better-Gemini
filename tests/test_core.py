@@ -56,6 +56,24 @@ class CoreTests(unittest.TestCase):
         )
         self.assertEqual(req.seed, 768631311)
 
+    def test_build_request_accepts_input_images(self):
+        req = build_request(
+            model="m",
+            prompt="p",
+            response_modalities="IMAGE",
+            input_images=[b"fake-png-bytes"],
+        )
+        self.assertEqual(req.input_images, (b"fake-png-bytes",))
+
+    def test_build_request_rejects_non_bytes_input_images(self):
+        with self.assertRaises(BetterGeminiConfigError):
+            build_request(
+                model="m",
+                prompt="p",
+                response_modalities="IMAGE",
+                input_images=["not-bytes"],  # type: ignore[list-item]
+            )
+
     def test_extract_text_and_images(self):
         img_bytes = b"not-a-real-png-but-bytes"
         b64 = base64.b64encode(img_bytes).decode("utf-8")

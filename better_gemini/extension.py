@@ -32,6 +32,51 @@ def _bytes_list_to_comfy_image(images: list[bytes]):
     return torch.cat(tensors, dim=0)
 
 
+def _comfy_image_to_png_bytes(prompt_images: Any) -> list[bytes]:
+    if prompt_images is None:
+        return []
+    try:
+        from io import BytesIO
+
+        import numpy as np
+        import torch
+        from PIL import Image
+    except Exception as e:
+        raise RuntimeError(
+            "Missing image deps (torch/numpy/Pillow). This node must run inside a ComfyUI environment."
+        ) from e
+
+    if not isinstance(prompt_images, torch.Tensor):
+        raise TypeError("`prompt_images` must be a ComfyUI IMAGE (torch.Tensor).")
+
+    images = prompt_images.detach().cpu()
+    if images.ndim == 3:
+        images = images.unsqueeze(0)
+    if images.ndim != 4:
+        raise ValueError("`prompt_images` must have shape [N,H,W,C] (or [H,W,C]).")
+
+    channels = images.shape[-1]
+    if channels not in (1, 3, 4):
+        raise ValueError(f"`prompt_images` must have 1, 3, or 4 channels; got {channels}.")
+
+    images = images.float().clamp(0.0, 1.0)
+    pngs: list[bytes] = []
+    for image in images:
+        arr = image.numpy()
+        if arr.shape[-1] == 1:
+            arr = np.repeat(arr, 3, axis=-1)
+        elif arr.shape[-1] == 4:
+            arr = arr[:, :, :3]
+
+        rgb = (arr * 255.0).round().astype(np.uint8)
+        pil = Image.fromarray(rgb, mode="RGB")
+        buf = BytesIO()
+        pil.save(buf, format="PNG")
+        pngs.append(buf.getvalue())
+
+    return pngs
+
+
 try:
     from comfy_api.latest import IO, ComfyExtension  # type: ignore
     from typing_extensions import override
@@ -79,6 +124,11 @@ if IO is not None:
                         options=["IMAGE", "IMAGE+TEXT"],
                         default="IMAGE+TEXT",
                         tooltip="Choose IMAGE-only output, or IMAGE+TEXT to also return text.",
+                    ),
+                    IO.Image.Input(
+                        "prompt_images",
+                        optional=True,
+                        tooltip="Optional images to include with the prompt (reference / edit). Batched IMAGE tensors send multiple images.",
                     ),
                     IO.Combo.Input(
                         "aspect_ratio",
@@ -207,6 +257,7 @@ if IO is not None:
             model: str,
             api_key: str = "",
             response_modalities: str = "IMAGE+TEXT",
+            prompt_images: Any = None,
             aspect_ratio: str = "auto",
             resolution: str = "auto",
             width: int = 0,
@@ -221,10 +272,12 @@ if IO is not None:
             system_prompt: str = "",
         ) -> Any:
             try:
+                prompt_image_bytes = _comfy_image_to_png_bytes(prompt_images)
                 request = build_request(
                     model=model,
                     prompt=prompt,
                     response_modalities=response_modalities,
+                    input_images=prompt_image_bytes,
                     aspect_ratio=aspect_ratio,
                     resolution=resolution,
                     width=width,

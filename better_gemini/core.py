@@ -49,6 +49,7 @@ class BetterGeminiRequest:
     image_resolution: str | None = None
     image_width: int | None = None
     image_height: int | None = None
+    input_images: tuple[bytes, ...] = ()
 
 
 def normalize_seed(seed: int) -> int | None:
@@ -112,6 +113,7 @@ def build_request(
     thinking_difficulty: str = "auto",
     thinking_budget: int = 0,
     seed: int = 0,
+    input_images: Iterable[bytes] | None = None,
 ) -> BetterGeminiRequest:
     if not prompt or not isinstance(prompt, str):
         raise BetterGeminiConfigError("`prompt` must be a non-empty string.")
@@ -136,6 +138,20 @@ def build_request(
         raise BetterGeminiConfigError("`width` and `height` must be set together (both > 0), or both left as 0.")
 
     normalized_seed = normalize_seed(seed)
+    resolved_input_images: list[bytes] = []
+    if input_images is not None:
+        for idx, image in enumerate(input_images):
+            if image is None:
+                continue
+            if isinstance(image, memoryview):
+                image = image.tobytes()
+            elif isinstance(image, bytearray):
+                image = bytes(image)
+            if not isinstance(image, bytes):
+                raise BetterGeminiConfigError(f"`input_images[{idx}]` must be bytes; got {type(image)!r}.")
+            if not image:
+                raise BetterGeminiConfigError(f"`input_images[{idx}]` is empty.")
+            resolved_input_images.append(image)
 
     return BetterGeminiRequest(
         model=model.strip(),
@@ -151,6 +167,7 @@ def build_request(
         image_resolution=resolution if resolution and resolution != "auto" else None,
         image_width=image_width,
         image_height=image_height,
+        input_images=tuple(resolved_input_images),
     )
 
 

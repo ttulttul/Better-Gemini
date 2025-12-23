@@ -110,6 +110,32 @@ def _call_generate_content(client: Any, *, model: str, contents: Any, config: An
     return generate_fn(**kwargs)
 
 
+def _build_contents(types_module: Any, *, prompt: str, input_images: tuple[bytes, ...]) -> Any:
+    if not input_images:
+        return prompt
+
+    content_cls = getattr(types_module, "Content", None)
+    part_cls = getattr(types_module, "Part", None)
+    if (
+        content_cls is not None
+        and part_cls is not None
+        and hasattr(part_cls, "from_text")
+        and hasattr(part_cls, "from_bytes")
+    ):
+        parts = [part_cls.from_text(prompt)]
+        parts.extend(part_cls.from_bytes(data=image, mime_type="image/png") for image in input_images)
+        return [content_cls(role="user", parts=parts)]
+
+    import base64
+
+    parts: list[dict[str, Any]] = [{"text": prompt}]
+    for image in input_images:
+        parts.append(
+            {"inline_data": {"mime_type": "image/png", "data": base64.b64encode(image).decode("utf-8")}},
+        )
+    return [{"role": "user", "parts": parts}]
+
+
 def generate_image_sync(
     *,
     api_key: str | None,
@@ -134,8 +160,14 @@ def generate_image_sync(
 
     client = genai.Client(api_key=resolved_api_key)
     cfg = _build_types_config(types, request)
-    logger.debug("Calling Gemini generate_content with model=%s modalities=%s", request.model, request.response_modalities)
-    response = _call_generate_content(client, model=request.model, contents=prompt, config=cfg)
+    contents = _build_contents(types, prompt=prompt, input_images=request.input_images)
+    logger.debug(
+        "Calling Gemini generate_content with model=%s modalities=%s prompt_images=%d",
+        request.model,
+        request.response_modalities,
+        len(request.input_images),
+    )
+    response = _call_generate_content(client, model=request.model, contents=contents, config=cfg)
 
     text, images = extract_text_and_images(response)
     return text, images

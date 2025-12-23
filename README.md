@@ -16,7 +16,7 @@ Custom ComfyUI node(s) for generating images with Google Gemini via the official
 ## Nodes
 
 - `Better Gemini` (image)
-  - Inputs: prompt, model, aspect ratio, resolution / width+height, temperature, top_p/top_k, max tokens, thinking difficulty, seed.
+  - Inputs: prompt, model, prompt_images (optional), aspect ratio, resolution / width+height, temperature, top_p/top_k, max tokens, thinking difficulty, seed.
   - Outputs: `IMAGE`, `STRING` (any returned text / notes).
 
 ## Notes
