@@ -1,0 +1,17 @@
+[project]
+name = "comfyui-better-gemini"
+description = "A better node for using Google Gemini models, supporting the latest API endpoints with a v3 ComfyUI node interface."
+dependencies = ["google-genai>=0.5.0"]
+version = "1.0.0"
+license = "MIT"
+classifiers = [
+    "Operating System :: OS Independent",
+]
+
+
+[project.urls]
+Repository = "https://github.com/ttulttul/Better-Gemini"
+
+[tool.comfy]
+PublisherId = "ttulttul"
+DisplayName = "ComfyUI-Better-Gemini"
