@@ -3,7 +3,7 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-from .core import BetterGeminiConfigError, build_request, max_dim_from_resolution
+from .core import BetterGeminiConfigError, build_request, resolution_mismatch_message
 from .genai_client import generate_image
 
 logger = logging.getLogger(__name__)
@@ -12,9 +12,9 @@ logger = logging.getLogger(__name__)
 def _bytes_list_to_comfy_image(
     images: list[bytes],
     *,
-    target_max_dim: int | None = None,
-    target_width: int | None = None,
-    target_height: int | None = None,
+    requested_resolution: str | None = None,
+    requested_width: int | None = None,
+    requested_height: int | None = None,
 ):
     if not images:
         raise ValueError("Gemini returned no images.")
@@ -30,20 +30,19 @@ def _bytes_list_to_comfy_image(
         ) from e
 
     tensors = []
-    resample = getattr(Image, "Resampling", Image).LANCZOS
-    for img_bytes in images:
+    for idx, img_bytes in enumerate(images):
         with Image.open(BytesIO(img_bytes)) as img:
             img = img.convert("RGB")
-            if target_width is not None and target_height is not None:
-                img = img.resize((target_width, target_height), resample=resample)
-            elif target_max_dim is not None:
-                w, h = img.size
-                current_max = max(w, h)
-                if current_max and current_max != target_max_dim:
-                    scale = target_max_dim / current_max
-                    new_w = max(1, int(round(w * scale)))
-                    new_h = max(1, int(round(h * scale)))
-                    img = img.resize((new_w, new_h), resample=resample)
+            w, h = img.size
+            mismatch = resolution_mismatch_message(
+                actual_width=w,
+                actual_height=h,
+                requested_resolution=requested_resolution,
+                requested_width=requested_width,
+                requested_height=requested_height,
+            )
+            if mismatch:
+                logger.warning("Gemini output image %d: %s Output will not be resized.", idx, mismatch)
             arr = np.array(img).astype("float32") / 255.0
             tensors.append(torch.from_numpy(arr).unsqueeze(0))
     return torch.cat(tensors, dim=0)
@@ -170,7 +169,7 @@ if IO is not None:
                         "resolution",
                         options=["auto", "1K", "2K", "4K"],
                         default="auto",
-                        tooltip="Target output resolution (best-effort). Gemini often returns ~1K; this node will resize to match the selection unless width+height are set.",
+                        tooltip="Requested output resolution (best-effort; may be ignored by the model). Logs a warning if the returned image size doesn't match.",
                         optional=True,
                     ),
                     IO.Int.Input(
@@ -315,17 +314,11 @@ if IO is not None:
                 request=request,
                 system_prompt=system_prompt or "",
             )
-            requested_width = request.image_width
-            requested_height = request.image_height
-            target_max_dim = None
-            if requested_width is None or requested_height is None:
-                target_max_dim = max_dim_from_resolution(request.image_resolution)
-
             image_tensor = _bytes_list_to_comfy_image(
                 images,
-                target_max_dim=target_max_dim,
-                target_width=requested_width,
-                target_height=requested_height,
+                requested_resolution=request.image_resolution,
+                requested_width=request.image_width,
+                requested_height=request.image_height,
             )
             return IO.NodeOutput(image_tensor, text)
 

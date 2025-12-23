@@ -7,6 +7,7 @@ from better_gemini.core import (
     extract_text_and_images,
     max_dim_from_resolution,
     normalize_seed,
+    resolution_mismatch_message,
     thinking_budget_from_difficulty,
 )
 
@@ -63,6 +64,61 @@ class CoreTests(unittest.TestCase):
                 response_modalities="IMAGE",
                 resolution="not-a-real-resolution",
             )
+
+    def test_resolution_mismatch_message_none_when_unset(self):
+        self.assertIsNone(
+            resolution_mismatch_message(
+                actual_width=1024,
+                actual_height=768,
+                requested_resolution=None,
+                requested_width=None,
+                requested_height=None,
+            )
+        )
+
+    def test_resolution_mismatch_message_respects_explicit_dimensions(self):
+        self.assertIsNone(
+            resolution_mismatch_message(
+                actual_width=640,
+                actual_height=480,
+                requested_resolution="4K",
+                requested_width=640,
+                requested_height=480,
+            )
+        )
+        self.assertIn(
+            "Requested size 640x480",
+            resolution_mismatch_message(
+                actual_width=1024,
+                actual_height=768,
+                requested_resolution="4K",
+                requested_width=640,
+                requested_height=480,
+            )
+            or "",
+        )
+
+    def test_resolution_mismatch_message_respects_resolution(self):
+        self.assertIsNone(
+            resolution_mismatch_message(
+                actual_width=4096,
+                actual_height=2304,
+                requested_resolution="4K",
+                requested_width=None,
+                requested_height=None,
+            )
+        )
+        self.assertIn(
+            "Requested resolution 4K",
+            resolution_mismatch_message(
+                actual_width=1024,
+                actual_height=1024,
+                requested_resolution="4K",
+                requested_width=None,
+                requested_height=None,
+            )
+            or "",
+        )
 
     def test_build_request_normalizes_seed(self):
         req = build_request(

@@ -193,6 +193,34 @@ def max_dim_from_resolution(resolution: str | None) -> int | None:
     return mapping.get(resolution)
 
 
+def resolution_mismatch_message(
+    *,
+    actual_width: int,
+    actual_height: int,
+    requested_resolution: str | None,
+    requested_width: int | None,
+    requested_height: int | None,
+) -> str | None:
+    if requested_width is not None and requested_height is not None:
+        if actual_width == requested_width and actual_height == requested_height:
+            return None
+        return (
+            f"Requested size {requested_width}x{requested_height}, but Gemini returned {actual_width}x{actual_height}."
+        )
+
+    target_max_dim = max_dim_from_resolution(requested_resolution)
+    if target_max_dim is None:
+        return None
+
+    actual_max_dim = max(actual_width, actual_height)
+    if actual_max_dim == target_max_dim:
+        return None
+    return (
+        f"Requested resolution {requested_resolution} (max dim {target_max_dim}), but Gemini returned "
+        f"{actual_width}x{actual_height} (max dim {actual_max_dim})."
+    )
+
+
 def _get_attr(obj: Any, name: str, default: Any = None) -> Any:
     if obj is None:
         return default
