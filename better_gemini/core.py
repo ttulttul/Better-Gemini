@@ -33,6 +33,13 @@ SUPPORTED_ASPECT_RATIOS: tuple[str, ...] = (
     "21:9",
 )
 
+SUPPORTED_IMAGE_RESOLUTIONS: tuple[str, ...] = (
+    "auto",
+    "1K",
+    "2K",
+    "4K",
+)
+
 
 @dataclass(frozen=True)
 class BetterGeminiRequest:
@@ -128,6 +135,10 @@ def build_request(
     if ar not in SUPPORTED_ASPECT_RATIOS:
         raise BetterGeminiConfigError(f"Unsupported aspect ratio: {ar!r}")
 
+    resolved_resolution = resolution or "auto"
+    if resolved_resolution not in SUPPORTED_IMAGE_RESOLUTIONS:
+        raise BetterGeminiConfigError(f"Unsupported image resolution: {resolved_resolution!r}")
+
     resolved_thinking_budget = thinking_budget if thinking_budget and thinking_budget > 0 else None
     if resolved_thinking_budget is None:
         resolved_thinking_budget = thinking_budget_from_difficulty(thinking_difficulty)
@@ -164,11 +175,22 @@ def build_request(
         seed=normalized_seed,
         thinking_budget=resolved_thinking_budget,
         image_aspect_ratio=ar if ar != "auto" else None,
-        image_resolution=resolution if resolution and resolution != "auto" else None,
+        image_resolution=resolved_resolution if resolved_resolution != "auto" else None,
         image_width=image_width,
         image_height=image_height,
         input_images=tuple(resolved_input_images),
     )
+
+
+def max_dim_from_resolution(resolution: str | None) -> int | None:
+    if not resolution or resolution == "auto":
+        return None
+    mapping = {
+        "1K": 1024,
+        "2K": 2048,
+        "4K": 4096,
+    }
+    return mapping.get(resolution)
 
 
 def _get_attr(obj: Any, name: str, default: Any = None) -> Any:

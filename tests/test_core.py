@@ -5,6 +5,7 @@ from better_gemini.core import (
     BetterGeminiConfigError,
     build_request,
     extract_text_and_images,
+    max_dim_from_resolution,
     normalize_seed,
     thinking_budget_from_difficulty,
 )
@@ -37,6 +38,13 @@ class CoreTests(unittest.TestCase):
         with self.assertRaises(BetterGeminiConfigError):
             thinking_budget_from_difficulty("nope")
 
+    def test_max_dim_from_resolution(self):
+        self.assertIsNone(max_dim_from_resolution(None))
+        self.assertIsNone(max_dim_from_resolution("auto"))
+        self.assertEqual(max_dim_from_resolution("1K"), 1024)
+        self.assertEqual(max_dim_from_resolution("2K"), 2048)
+        self.assertEqual(max_dim_from_resolution("4K"), 4096)
+
     def test_build_request_requires_both_dimensions(self):
         with self.assertRaises(BetterGeminiConfigError):
             build_request(
@@ -45,6 +53,15 @@ class CoreTests(unittest.TestCase):
                 response_modalities="IMAGE",
                 width=512,
                 height=0,
+            )
+
+    def test_build_request_rejects_invalid_resolution(self):
+        with self.assertRaises(BetterGeminiConfigError):
+            build_request(
+                model="m",
+                prompt="p",
+                response_modalities="IMAGE",
+                resolution="not-a-real-resolution",
             )
 
     def test_build_request_normalizes_seed(self):
