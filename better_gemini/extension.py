@@ -183,7 +183,7 @@ if IO is not None:
                         max=0xFFFFFFFFFFFFFFFF,
                         step=1,
                         control_after_generate=True,
-                        tooltip="Best-effort seed for determinism (not guaranteed). Set 0 for 'unset'.",
+                        tooltip="Best-effort seed for determinism (not guaranteed). Set 0 for 'unset'. Gemini requires int32; larger values are folded.",
                         optional=True,
                     ),
                     IO.String.Input(

@@ -7,6 +7,9 @@ from typing import Any, Iterable
 
 logger = logging.getLogger(__name__)
 
+_GEMINI_INT32_MAX = 2**31 - 1
+_warned_seed_mapping = False
+
 
 class BetterGeminiError(RuntimeError):
     pass
@@ -46,6 +49,38 @@ class BetterGeminiRequest:
     image_resolution: str | None = None
     image_width: int | None = None
     image_height: int | None = None
+
+
+def normalize_seed(seed: int) -> int | None:
+    """
+    Normalize a ComfyUI-style seed into the int32 range expected by Gemini.
+
+    The Gemini API expects `generation_config.seed` to be a protobuf int32. ComfyUI
+    commonly uses 64-bit seeds, so we deterministically fold larger values into
+    the supported range.
+    """
+
+    global _warned_seed_mapping
+
+    if not seed or seed < 0:
+        return None
+    if seed <= _GEMINI_INT32_MAX:
+        return seed
+
+    normalized = seed % (2**31)
+    if normalized == 0:
+        normalized = 1
+
+    if not _warned_seed_mapping:
+        logger.warning(
+            "Seed %s is outside Gemini's int32 range; mapping to %s (seed %% 2**31).",
+            seed,
+            normalized,
+        )
+        _warned_seed_mapping = True
+    else:
+        logger.debug("Seed %s mapped to int32 %s.", seed, normalized)
+    return normalized
 
 
 def thinking_budget_from_difficulty(difficulty: str) -> int | None:
@@ -100,7 +135,7 @@ def build_request(
     if (image_width is None) != (image_height is None):
         raise BetterGeminiConfigError("`width` and `height` must be set together (both > 0), or both left as 0.")
 
-    normalized_seed = seed if seed and seed >= 0 else None
+    normalized_seed = normalize_seed(seed)
 
     return BetterGeminiRequest(
         model=model.strip(),
@@ -193,4 +228,3 @@ def extract_text_and_images(response: Any) -> tuple[str, list[bytes]]:
                 images.append(decoded)
 
     return "\n".join(texts).strip(), images
-

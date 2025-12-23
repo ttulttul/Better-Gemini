@@ -6,7 +6,7 @@ import logging
 import os
 from typing import Any
 
-from .core import BetterGeminiError, BetterGeminiRequest, extract_text_and_images
+from .core import BetterGeminiError, BetterGeminiRequest, extract_text_and_images, normalize_seed
 
 logger = logging.getLogger(__name__)
 
@@ -50,7 +50,8 @@ def _build_types_config(types_module: Any, request: BetterGeminiRequest) -> Any:
     _set_kwarg_candidates(config_kwargs, ["top_p", "topP"], request.top_p)
     _set_kwarg_candidates(config_kwargs, ["top_k", "topK"], request.top_k)
     _set_kwarg_candidates(config_kwargs, ["max_output_tokens", "maxOutputTokens"], request.max_output_tokens)
-    _set_kwarg_candidates(config_kwargs, ["seed"], request.seed)
+    normalized_seed = normalize_seed(request.seed) if request.seed is not None else None
+    _set_kwarg_candidates(config_kwargs, ["seed"], normalized_seed)
 
     if request.thinking_budget and thinking_cfg_cls is not None:
         thinking_kwargs: dict[str, Any] = {}
