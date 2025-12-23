@@ -122,7 +122,7 @@ def _build_contents(types_module: Any, *, prompt: str, input_images: tuple[bytes
         and hasattr(part_cls, "from_text")
         and hasattr(part_cls, "from_bytes")
     ):
-        parts = [part_cls.from_text(prompt)]
+        parts = [part_cls.from_text(text=prompt)]
         parts.extend(part_cls.from_bytes(data=image, mime_type="image/png") for image in input_images)
         return [content_cls(role="user", parts=parts)]
 
