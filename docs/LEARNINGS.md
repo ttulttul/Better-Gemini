@@ -6,3 +6,4 @@
 - The Gemini `generate_content` API does not expose pixel-precise output sizing; this node logs a warning when the returned size doesn’t match `resolution`/`width`+`height` (no auto-resize).
 - The `google-genai` SDK may not yet map `generationConfig.imageConfig`; when `resolution`/`aspect_ratio` are set, this node injects `imageConfig` into the raw request to enable sizing on models that support it.
 - If Gemini blocks generation (e.g. `prompt_feedback.block_reason` or candidate `finish_reason` like `IMAGE_SAFETY`) and returns no image parts, the node surfaces the reason in the text output and returns a blank placeholder image tensor.
+- `client.models.list()` returns model objects with `name` and `supported_actions`; filtering for `"generateContent"` is a good default for populating node model dropdowns (cache results to avoid repeated calls).

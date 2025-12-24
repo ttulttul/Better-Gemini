@@ -1,16 +1,22 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import inspect
 import json
 import logging
 import os
+import time
 from typing import Any
 from urllib.parse import urlencode
 
 from .core import BetterGeminiError, BetterGeminiRequest, describe_response_block, extract_text_and_images, normalize_seed
 
 logger = logging.getLogger(__name__)
+
+DEFAULT_MODEL = "models/gemini-3-pro-image-preview"
+_MODEL_LIST_CACHE: dict[str, tuple[float, list[str]]] = {}
+_MODEL_LIST_CACHE_TTL_S = 10 * 60
 
 
 def _first_env(*names: str) -> str | None:
@@ -224,6 +230,86 @@ def _build_contents(types_module: Any, *, prompt: str, input_images: tuple[bytes
             {"inline_data": {"mime_type": "image/png", "data": base64.b64encode(image).decode("utf-8")}},
         )
     return [{"role": "user", "parts": parts}]
+
+
+def _model_supported_actions(model: Any) -> set[str]:
+    if model is None:
+        return set()
+    if isinstance(model, dict):
+        actions = model.get("supported_actions") or model.get("supportedActions") or []
+    else:
+        actions = getattr(model, "supported_actions", None) or getattr(model, "supportedActions", None) or []
+    if actions is None:
+        return set()
+    if isinstance(actions, str):
+        return {actions}
+    try:
+        return {str(action) for action in actions}
+    except TypeError:
+        return set()
+
+
+def _model_name(model: Any) -> str | None:
+    if model is None:
+        return None
+    if isinstance(model, dict):
+        name = model.get("name")
+    else:
+        name = getattr(model, "name", None)
+    if not name:
+        return None
+    return str(name)
+
+
+def list_models_sync(
+    *,
+    api_key: str | None,
+    filter_action: str | None = "generateContent",
+    cache_ttl_s: int = _MODEL_LIST_CACHE_TTL_S,
+) -> list[str]:
+    """
+    List available models using the official `google-genai` SDK (`client.models.list()`).
+
+    `filter_action` defaults to "generateContent" to match the node's usage.
+    """
+
+    try:
+        from google import genai  # type: ignore[import-not-found]
+    except Exception as e:
+        raise BetterGeminiError(
+            "Missing dependency `google-genai`. Install it with `pip install -r ComfyUI-Better-Gemini/requirements.txt`."
+        ) from e
+
+    resolved_api_key = api_key or _first_env("GOOGLE_API_KEY", "GEMINI_API_KEY")
+    if not resolved_api_key:
+        raise BetterGeminiError("No API key provided. Set `GOOGLE_API_KEY` (or `GEMINI_API_KEY`) or pass `api_key`.")
+
+    cache_key = hashlib.sha256(resolved_api_key.encode("utf-8")).hexdigest()
+    now = time.monotonic()
+    if cache_ttl_s > 0:
+        cached = _MODEL_LIST_CACHE.get(cache_key)
+        if cached is not None:
+            cached_at, models = cached
+            if now - cached_at < cache_ttl_s:
+                logger.debug("Using cached Gemini model list (%d models).", len(models))
+                return list(models)
+
+    client = genai.Client(api_key=resolved_api_key)
+    models: list[str] = []
+    for model in client.models.list():
+        name = _model_name(model)
+        if not name:
+            continue
+        if filter_action:
+            actions = _model_supported_actions(model)
+            if filter_action not in actions:
+                continue
+        models.append(name)
+
+    models = sorted(set(models))
+    if cache_ttl_s > 0:
+        _MODEL_LIST_CACHE[cache_key] = (now, models)
+    return list(models)
 
 
 def generate_image_sync(

@@ -4,9 +4,33 @@ import logging
 from typing import Any
 
 from .core import BetterGeminiConfigError, build_request, max_dim_from_resolution, resolution_mismatch_message
-from .genai_client import generate_image
+from .genai_client import DEFAULT_MODEL, generate_image, list_models_sync
 
 logger = logging.getLogger(__name__)
+_warned_model_listing = False
+
+
+def _model_dropdown_options() -> list[str]:
+    global _warned_model_listing
+    try:
+        models = list_models_sync(api_key=None, filter_action="generateContent")
+    except Exception as e:
+        if not _warned_model_listing:
+            logger.warning("Unable to list Gemini models for dropdown; falling back to default. %s", e)
+            _warned_model_listing = True
+        else:
+            logger.debug("Unable to list Gemini models for dropdown; using default.", exc_info=True)
+        return [DEFAULT_MODEL]
+
+    if not models:
+        if not _warned_model_listing:
+            logger.warning("Gemini models.list returned no models; falling back to default.")
+            _warned_model_listing = True
+        return [DEFAULT_MODEL]
+
+    if DEFAULT_MODEL not in models:
+        models = [DEFAULT_MODEL, *models]
+    return models
 
 
 def _placeholder_dimensions(
@@ -166,10 +190,11 @@ if IO is not None:
                         default="",
                         tooltip="Text prompt for image generation.",
                     ),
-                    IO.String.Input(
+                    IO.Combo.Input(
                         "model",
-                        default="gemini-2.5-flash-image-preview",
-                        tooltip="Gemini model name (must support image output).",
+                        options=_model_dropdown_options(),
+                        default=DEFAULT_MODEL,
+                        tooltip="Gemini model name (populated via models.list; requires API key).",
                     ),
                     IO.String.Input(
                         "api_key",
