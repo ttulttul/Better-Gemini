@@ -370,9 +370,15 @@ def generate_image_sync(
             else:
                 text = block_desc
         else:
-            raise BetterGeminiError(
-                "Gemini returned no images. If you expected an image, the request may have been blocked or the model may not support image output."
+            no_image_msg = (
+                f"Gemini returned no images for model {request.model}. "
+                "The request may have been blocked or the model may not support image output."
             )
+            logger.warning(no_image_msg)
+            if text:
+                text = f"{text}\n\n{no_image_msg}".strip()
+            else:
+                text = no_image_msg
     return text, images
 
 

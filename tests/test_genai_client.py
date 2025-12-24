@@ -4,7 +4,13 @@ import types
 import unittest
 
 from better_gemini.core import BetterGeminiError, BetterGeminiRequest
-from better_gemini.genai_client import _MODEL_LIST_CACHE, _build_contents, _build_image_config_patch, list_models_sync
+from better_gemini.genai_client import (
+    _MODEL_LIST_CACHE,
+    _build_contents,
+    _build_image_config_patch,
+    generate_image_sync,
+    list_models_sync,
+)
 
 
 class _Part:
@@ -190,6 +196,56 @@ class GenaiClientTests(unittest.TestCase):
                 sys.modules.pop("google.genai", None)
             else:
                 sys.modules["google.genai"] = prior_google_genai
+
+    def test_generate_image_sync_no_images_returns_note_in_text(self):
+        response = {"candidates": [{"content": {"parts": [{"text": "hi"}]}}]}
+
+        class _Models:
+            def generate_content(self, *, model=None, contents=None, config=None, **kwargs):
+                return response
+
+        class _Client:
+            def __init__(self, api_key=None, **kwargs):
+                self.models = _Models()
+
+        google = types.ModuleType("google")
+        genai = types.ModuleType("google.genai")
+        genai.Client = _Client  # type: ignore[attr-defined]
+        genai_types = types.ModuleType("google.genai.types")
+        google.genai = genai  # type: ignore[attr-defined]
+
+        prior_google = sys.modules.get("google")
+        prior_google_genai = sys.modules.get("google.genai")
+        prior_google_genai_types = sys.modules.get("google.genai.types")
+        sys.modules["google"] = google
+        sys.modules["google.genai"] = genai
+        sys.modules["google.genai.types"] = genai_types
+        try:
+            text, images = generate_image_sync(
+                api_key="k",
+                request=BetterGeminiRequest(
+                    model="models/text-only",
+                    prompt="p",
+                    response_modalities=("IMAGE",),
+                ),
+            )
+        finally:
+            if prior_google is None:
+                sys.modules.pop("google", None)
+            else:
+                sys.modules["google"] = prior_google
+            if prior_google_genai is None:
+                sys.modules.pop("google.genai", None)
+            else:
+                sys.modules["google.genai"] = prior_google_genai
+            if prior_google_genai_types is None:
+                sys.modules.pop("google.genai.types", None)
+            else:
+                sys.modules["google.genai.types"] = prior_google_genai_types
+
+        self.assertEqual(images, [])
+        self.assertIn("hi", text)
+        self.assertIn("Gemini returned no images for model models/text-only.", text)
 
 
 if __name__ == "__main__":
