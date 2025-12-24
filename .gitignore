@@ -10,4 +10,4 @@ venv/
 dist/
 build/
 *.egg-info/
-
+node.zip

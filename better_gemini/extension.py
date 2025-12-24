@@ -3,21 +3,53 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-from .core import BetterGeminiConfigError, build_request, resolution_mismatch_message
+from .core import BetterGeminiConfigError, build_request, max_dim_from_resolution, resolution_mismatch_message
 from .genai_client import generate_image
 
 logger = logging.getLogger(__name__)
 
 
+def _placeholder_dimensions(
+    *,
+    requested_aspect_ratio: str | None,
+    requested_resolution: str | None,
+    requested_width: int | None,
+    requested_height: int | None,
+) -> tuple[int, int]:
+    if requested_width is not None and requested_height is not None:
+        return requested_width, requested_height
+
+    max_dim = max_dim_from_resolution(requested_resolution) or 1024
+
+    if requested_aspect_ratio and ":" in requested_aspect_ratio:
+        try:
+            width_ratio_str, height_ratio_str = requested_aspect_ratio.split(":", 1)
+            width_ratio = int(width_ratio_str)
+            height_ratio = int(height_ratio_str)
+        except Exception:
+            width_ratio = 0
+            height_ratio = 0
+
+        if width_ratio > 0 and height_ratio > 0:
+            if width_ratio >= height_ratio:
+                width = max_dim
+                height = max(1, int(round(max_dim * height_ratio / width_ratio)))
+            else:
+                height = max_dim
+                width = max(1, int(round(max_dim * width_ratio / height_ratio)))
+            return width, height
+
+    return max_dim, max_dim
+
+
 def _bytes_list_to_comfy_image(
     images: list[bytes],
     *,
+    requested_aspect_ratio: str | None = None,
     requested_resolution: str | None = None,
     requested_width: int | None = None,
     requested_height: int | None = None,
 ):
-    if not images:
-        raise ValueError("Gemini returned no images.")
     try:
         from io import BytesIO
 
@@ -28,6 +60,16 @@ def _bytes_list_to_comfy_image(
         raise RuntimeError(
             "Missing image deps (torch/numpy/Pillow). This node must run inside a ComfyUI environment."
         ) from e
+
+    if not images:
+        width, height = _placeholder_dimensions(
+            requested_aspect_ratio=requested_aspect_ratio,
+            requested_resolution=requested_resolution,
+            requested_width=requested_width,
+            requested_height=requested_height,
+        )
+        logger.warning("Gemini returned no images; emitting a blank placeholder %dx%d.", width, height)
+        return torch.zeros((1, height, width, 3), dtype=torch.float32)
 
     tensors = []
     for idx, img_bytes in enumerate(images):
@@ -316,6 +358,7 @@ if IO is not None:
             )
             image_tensor = _bytes_list_to_comfy_image(
                 images,
+                requested_aspect_ratio=request.image_aspect_ratio,
                 requested_resolution=request.image_resolution,
                 requested_width=request.image_width,
                 requested_height=request.image_height,

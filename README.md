@@ -29,6 +29,7 @@ Custom ComfyUI node(s) for generating images with Google Gemini via the official
 - This extension uses ComfyUI’s V3 extension loader (`comfy_entrypoint`).
 - Gemini requires `seed` to fit in an `int32`; larger ComfyUI seeds are deterministically folded via `seed % 2**31`.
 - `resolution`/`aspect_ratio` are best-effort (model-dependent). For models that support it (e.g. `gemini-3-pro-image-preview`), the node sends `generationConfig.imageConfig` with `imageSize`/`aspectRatio`; it logs a warning if the returned size doesn’t match (no auto-resize).
+- If Gemini blocks image generation (safety filters), the node returns a blank placeholder image and includes the block reason in the `STRING` output (and logs a warning).
 
 ## Dev
 

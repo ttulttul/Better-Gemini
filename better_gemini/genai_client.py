@@ -8,7 +8,7 @@ import os
 from typing import Any
 from urllib.parse import urlencode
 
-from .core import BetterGeminiError, BetterGeminiRequest, extract_text_and_images, normalize_seed
+from .core import BetterGeminiError, BetterGeminiRequest, describe_response_block, extract_text_and_images, normalize_seed
 
 logger = logging.getLogger(__name__)
 
@@ -275,6 +275,18 @@ def generate_image_sync(
         response = _call_generate_content(client, model=request.model, contents=contents, config=cfg)
 
     text, images = extract_text_and_images(response)
+    if "IMAGE" in request.response_modalities and not images:
+        block_desc = describe_response_block(response)
+        if block_desc:
+            logger.warning("%s No images were returned.", block_desc)
+            if text:
+                text = f"{text}\n\n{block_desc}".strip()
+            else:
+                text = block_desc
+        else:
+            raise BetterGeminiError(
+                "Gemini returned no images. If you expected an image, the request may have been blocked or the model may not support image output."
+            )
     return text, images
 
 

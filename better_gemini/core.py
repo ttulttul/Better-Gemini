@@ -273,6 +273,93 @@ def _decode_maybe_base64(data: Any) -> bytes | None:
         return None
 
 
+def _stringify_reason(reason: Any) -> str | None:
+    if reason is None:
+        return None
+    if isinstance(reason, str):
+        return reason
+    value = getattr(reason, "value", None)
+    if isinstance(value, str):
+        return value
+    return str(reason)
+
+
+_BLOCKING_FINISH_REASONS: frozenset[str] = frozenset(
+    {
+        "SAFETY",
+        "IMAGE_SAFETY",
+        "BLOCKLIST",
+        "PROHIBITED_CONTENT",
+        "SPII",
+    }
+)
+
+
+def describe_response_block(response: Any) -> str | None:
+    """
+    Best-effort human-readable explanation when Gemini blocks generation.
+
+    This inspects the GenerateContentResponse `prompt_feedback` (no candidates)
+    and/or candidate `finish_reason`/safety ratings.
+    """
+
+    prompt_feedback = _get_attr(response, "prompt_feedback", None)
+    if prompt_feedback is None:
+        prompt_feedback = _get_attr(response, "promptFeedback", None)
+
+    if prompt_feedback is not None:
+        block_reason = _get_attr(prompt_feedback, "block_reason", None)
+        if block_reason is None:
+            block_reason = _get_attr(prompt_feedback, "blockReason", None)
+        block_reason_message = _get_attr(prompt_feedback, "block_reason_message", None)
+        if block_reason_message is None:
+            block_reason_message = _get_attr(prompt_feedback, "blockReasonMessage", None)
+
+        reason_str = _stringify_reason(block_reason)
+        message_str = block_reason_message.strip() if isinstance(block_reason_message, str) and block_reason_message else None
+        if reason_str and reason_str != "BLOCKED_REASON_UNSPECIFIED":
+            if message_str:
+                return f"Gemini blocked the request ({reason_str}): {message_str}"
+            return f"Gemini blocked the request ({reason_str})."
+
+    candidates = _get_attr(response, "candidates")
+    if candidates:
+        candidate = candidates[0]
+        finish_reason = _get_attr(candidate, "finish_reason", None)
+        if finish_reason is None:
+            finish_reason = _get_attr(candidate, "finishReason", None)
+        finish_message = _get_attr(candidate, "finish_message", None)
+        if finish_message is None:
+            finish_message = _get_attr(candidate, "finishMessage", None)
+
+        finish_reason_str = _stringify_reason(finish_reason)
+        finish_message_str = finish_message.strip() if isinstance(finish_message, str) and finish_message else None
+        if finish_reason_str and finish_reason_str in _BLOCKING_FINISH_REASONS:
+            if finish_message_str:
+                return f"Gemini blocked generation ({finish_reason_str}): {finish_message_str}"
+            return f"Gemini blocked generation ({finish_reason_str})."
+
+        safety_ratings = _get_attr(candidate, "safety_ratings", None)
+        if safety_ratings is None:
+            safety_ratings = _get_attr(candidate, "safetyRatings", None)
+
+        blocked_categories: list[str] = []
+        for rating in safety_ratings or []:
+            blocked = _get_attr(rating, "blocked", None)
+            if blocked is not True:
+                continue
+            category = _stringify_reason(_get_attr(rating, "category", None)) or "unknown"
+            probability = _stringify_reason(_get_attr(rating, "probability", None))
+            if probability:
+                blocked_categories.append(f"{category} ({probability})")
+            else:
+                blocked_categories.append(category)
+        if blocked_categories:
+            return f"Gemini safety filters blocked generation: {', '.join(blocked_categories)}."
+
+    return None
+
+
 def extract_text_and_images(response: Any) -> tuple[str, list[bytes]]:
     """
     Extract text and image bytes from a google-genai GenerateContent response.

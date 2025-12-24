@@ -4,6 +4,7 @@ import unittest
 from better_gemini.core import (
     BetterGeminiConfigError,
     build_request,
+    describe_response_block,
     extract_text_and_images,
     max_dim_from_resolution,
     normalize_seed,
@@ -184,6 +185,40 @@ class CoreTests(unittest.TestCase):
         text, images = extract_text_and_images(response)
         self.assertEqual(text, "")
         self.assertEqual(images, [img_bytes])
+
+    def test_describe_response_block_prompt_feedback(self):
+        response = _Obj(
+            prompt_feedback=_Obj(block_reason="SAFETY", block_reason_message="Nope."),
+        )
+        self.assertEqual(describe_response_block(response), "Gemini blocked the request (SAFETY): Nope.")
+
+    def test_describe_response_block_prompt_feedback_dict_keys(self):
+        response = {
+            "promptFeedback": {"blockReason": "SAFETY", "blockReasonMessage": "Nope."},
+        }
+        self.assertEqual(describe_response_block(response), "Gemini blocked the request (SAFETY): Nope.")
+
+    def test_describe_response_block_candidate_finish_reason(self):
+        response = _Obj(candidates=[_Obj(finish_reason="IMAGE_SAFETY", finish_message="Nope.")])
+        self.assertEqual(describe_response_block(response), "Gemini blocked generation (IMAGE_SAFETY): Nope.")
+
+    def test_describe_response_block_candidate_safety_ratings(self):
+        response = _Obj(
+            candidates=[
+                _Obj(
+                    safety_ratings=[
+                        _Obj(blocked=True, category=_Obj(value="HARASSMENT"), probability=_Obj(value="HIGH"))
+                    ]
+                )
+            ]
+        )
+        self.assertEqual(
+            describe_response_block(response),
+            "Gemini safety filters blocked generation: HARASSMENT (HIGH).",
+        )
+
+    def test_describe_response_block_none_when_unblocked(self):
+        self.assertIsNone(describe_response_block(_Obj(candidates=[_Obj()])))
 
 
 if __name__ == "__main__":
