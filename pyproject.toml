@@ -2,7 +2,7 @@
 name = "comfyui-better-gemini"
 description = "A better node for using Google Gemini models, supporting the latest API endpoints with a v3 ComfyUI node interface."
 dependencies = ["google-genai>=0.5.0"]
-version = "1.0.0"
+version = "1.0.1"
 license = "MIT"
 classifiers = [
     "Operating System :: OS Independent",
