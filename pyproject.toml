@@ -1,8 +1,13 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
 [project]
 name = "comfyui-better-gemini"
 description = "A better node for using Google Gemini models, supporting the latest API endpoints with a v3 ComfyUI node interface."
 dependencies = ["google-genai>=0.5.0"]
 version = "1.0.1"
+requires-python = ">=3.9"
 license = "MIT"
 classifiers = [
     "Operating System :: OS Independent",
@@ -15,3 +20,6 @@ Repository = "https://github.com/ttulttul/Better-Gemini"
 [tool.comfy]
 PublisherId = "ttulttul"
 DisplayName = "ComfyUI-Better-Gemini"
+
+[dependency-groups]
+dev = []

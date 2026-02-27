@@ -7,8 +7,9 @@ Custom ComfyUI node(s) for generating images with Google Gemini via the official
 1. Clone into your ComfyUI `custom_nodes` directory:
    - `cd /path/to/ComfyUI/custom_nodes`
    - `git clone https://github.com/<you>/ComfyUI-Better-Gemini.git`
-2. Install Python deps (network required):
-   - `pip install -r ComfyUI-Better-Gemini/requirements.txt`
+2. Install Python deps with `uv` (network required):
+   - `uv sync`
+   - `uv pip install --python /path/to/ComfyUI/python/bin/python -e ./ComfyUI-Better-Gemini`
 3. Set an API key (recommended):
    - `export GOOGLE_API_KEY="..."` (or `GEMINI_API_KEY`)
 4. Restart ComfyUI.
@@ -34,4 +35,5 @@ Custom ComfyUI node(s) for generating images with Google Gemini via the official
 
 ## Dev
 
-- Run unit tests: `python -m unittest discover -s tests -p 'test_*.py' -v`
+- Sync dev environment: `uv sync --dev`
+- Run unit tests: `uv run python -m unittest discover -s tests -p 'test_*.py' -v`

@@ -9,3 +9,4 @@
 - `client.models.list()` returns model objects with `name` and `supported_actions`; filtering for `"generateContent"` is a good default for populating node model dropdowns (cache results to avoid repeated calls).
 - Not every model that supports `"generateContent"` can output images; if a selected model returns text-only, handle empty-image responses by returning a placeholder image and surfacing a note in the node’s text output.
 - For better offline/no-key ergonomics, keep a bundled fallback list of image-capable defaults in the model dropdown (currently Gemini image-preview + Imagen 4 options) and merge these defaults into successful `models.list()` responses without duplicates.
+- Converting to `uv` project workflows works best by declaring dependencies in `pyproject.toml` and using `uv sync` / `uv run` as the default install+test path.
