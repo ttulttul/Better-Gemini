@@ -15,6 +15,12 @@ from .core import BetterGeminiError, BetterGeminiRequest, describe_response_bloc
 logger = logging.getLogger(__name__)
 
 DEFAULT_MODEL = "models/gemini-3-pro-image-preview"
+DEFAULT_MODELS = [
+    "models/gemini-3.1-flash-image-preview",
+    "models/gemini-3-pro-image-preview",
+    "models/imagen-4.0-generate-001",
+    "models/imagen-4.0-ultra-generate-001",
+]
 _MODEL_LIST_CACHE: dict[str, tuple[float, list[str]]] = {}
 _MODEL_LIST_CACHE_TTL_S = 10 * 60
 

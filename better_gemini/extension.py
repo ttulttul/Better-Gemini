@@ -4,7 +4,7 @@ import logging
 from typing import Any
 
 from .core import BetterGeminiConfigError, build_request, max_dim_from_resolution, resolution_mismatch_message
-from .genai_client import DEFAULT_MODEL, generate_image, list_models_sync
+from .genai_client import DEFAULT_MODEL, DEFAULT_MODELS, generate_image, list_models_sync
 
 logger = logging.getLogger(__name__)
 _warned_model_listing = False
@@ -16,21 +16,19 @@ def _model_dropdown_options() -> list[str]:
         models = list_models_sync(api_key=None, filter_action="generateContent")
     except Exception as e:
         if not _warned_model_listing:
-            logger.warning("Unable to list Gemini models for dropdown; falling back to default. %s", e)
+            logger.warning("Unable to list Gemini models for dropdown; falling back to bundled defaults. %s", e)
             _warned_model_listing = True
         else:
-            logger.debug("Unable to list Gemini models for dropdown; using default.", exc_info=True)
-        return [DEFAULT_MODEL]
+            logger.debug("Unable to list Gemini models for dropdown; using bundled defaults.", exc_info=True)
+        return list(DEFAULT_MODELS)
 
     if not models:
         if not _warned_model_listing:
-            logger.warning("Gemini models.list returned no models; falling back to default.")
+            logger.warning("Gemini models.list returned no models; falling back to bundled defaults.")
             _warned_model_listing = True
-        return [DEFAULT_MODEL]
+        return list(DEFAULT_MODELS)
 
-    if DEFAULT_MODEL not in models:
-        models = [DEFAULT_MODEL, *models]
-    return models
+    return list(dict.fromkeys([*DEFAULT_MODELS, *models]))
 
 
 def _placeholder_dimensions(

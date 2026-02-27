@@ -5,6 +5,8 @@ import unittest
 
 from better_gemini.core import BetterGeminiError, BetterGeminiRequest
 from better_gemini.genai_client import (
+    DEFAULT_MODEL,
+    DEFAULT_MODELS,
     _MODEL_LIST_CACHE,
     _build_contents,
     _build_image_config_patch,
@@ -37,6 +39,9 @@ class _Types:
 class GenaiClientTests(unittest.TestCase):
     def setUp(self):
         _MODEL_LIST_CACHE.clear()
+
+    def test_default_model_is_in_bundled_default_models(self):
+        self.assertIn(DEFAULT_MODEL, DEFAULT_MODELS)
 
     def test_build_contents_text_only_returns_str(self):
         contents = _build_contents(_Types, prompt="hello", input_images=())

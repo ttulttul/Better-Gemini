@@ -8,3 +8,4 @@
 - If Gemini blocks generation (e.g. `prompt_feedback.block_reason` or candidate `finish_reason` like `IMAGE_SAFETY`) and returns no image parts, the node surfaces the reason in the text output and returns a blank placeholder image tensor.
 - `client.models.list()` returns model objects with `name` and `supported_actions`; filtering for `"generateContent"` is a good default for populating node model dropdowns (cache results to avoid repeated calls).
 - Not every model that supports `"generateContent"` can output images; if a selected model returns text-only, handle empty-image responses by returning a placeholder image and surfacing a note in the node’s text output.
+- For better offline/no-key ergonomics, keep a bundled fallback list of image-capable defaults in the model dropdown (currently Gemini image-preview + Imagen 4 options) and merge these defaults into successful `models.list()` responses without duplicates.
