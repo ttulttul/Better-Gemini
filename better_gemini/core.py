@@ -185,12 +185,13 @@ def build_request(
 def max_dim_from_resolution(resolution: str | None) -> int | None:
     if not resolution or resolution == "auto":
         return None
+    normalized = resolution.strip().upper()
     mapping = {
         "1K": 1024,
         "2K": 2048,
         "4K": 4096,
     }
-    return mapping.get(resolution)
+    return mapping.get(normalized)
 
 
 def resolution_mismatch_message(

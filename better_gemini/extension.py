@@ -3,32 +3,71 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-from .core import BetterGeminiConfigError, build_request, max_dim_from_resolution, resolution_mismatch_message
-from .genai_client import DEFAULT_MODEL, DEFAULT_MODELS, generate_image, list_models_sync
+from .core import (
+    BetterGeminiConfigError,
+    build_request as build_gemini_request,
+    max_dim_from_resolution,
+    resolution_mismatch_message,
+)
+from .genai_client import (
+    DEFAULT_MODEL as GEMINI_DEFAULT_MODEL,
+    DEFAULT_MODELS as GEMINI_DEFAULT_MODELS,
+    generate_image as generate_gemini_image,
+    list_models_sync as list_gemini_models_sync,
+)
+from .grok_client import (
+    DEFAULT_MODEL as GROK_DEFAULT_MODEL,
+    DEFAULT_MODELS as GROK_DEFAULT_MODELS,
+    generate_images as generate_grok_images,
+    list_models_sync as list_grok_models_sync,
+)
+from .grok_core import BetterGrokConfigError, build_request as build_grok_request
 
 logger = logging.getLogger(__name__)
-_warned_model_listing = False
+_warned_gemini_model_listing = False
+_warned_grok_model_listing = False
 
 
 def _model_dropdown_options() -> list[str]:
-    global _warned_model_listing
+    global _warned_gemini_model_listing
     try:
-        models = list_models_sync(api_key=None, filter_action="generateContent")
+        models = list_gemini_models_sync(api_key=None, filter_action="generateContent")
     except Exception as e:
-        if not _warned_model_listing:
+        if not _warned_gemini_model_listing:
             logger.warning("Unable to list Gemini models for dropdown; falling back to bundled defaults. %s", e)
-            _warned_model_listing = True
+            _warned_gemini_model_listing = True
         else:
             logger.debug("Unable to list Gemini models for dropdown; using bundled defaults.", exc_info=True)
-        return list(DEFAULT_MODELS)
+        return list(GEMINI_DEFAULT_MODELS)
 
     if not models:
-        if not _warned_model_listing:
+        if not _warned_gemini_model_listing:
             logger.warning("Gemini models.list returned no models; falling back to bundled defaults.")
-            _warned_model_listing = True
-        return list(DEFAULT_MODELS)
+            _warned_gemini_model_listing = True
+        return list(GEMINI_DEFAULT_MODELS)
 
-    return list(dict.fromkeys([*DEFAULT_MODELS, *models]))
+    return list(dict.fromkeys([*GEMINI_DEFAULT_MODELS, *models]))
+
+
+def _grok_model_dropdown_options() -> list[str]:
+    global _warned_grok_model_listing
+    try:
+        models = list_grok_models_sync(api_key=None)
+    except Exception as e:
+        if not _warned_grok_model_listing:
+            logger.warning("Unable to list xAI image models for dropdown; falling back to bundled defaults. %s", e)
+            _warned_grok_model_listing = True
+        else:
+            logger.debug("Unable to list xAI image models for dropdown; using bundled defaults.", exc_info=True)
+        return list(GROK_DEFAULT_MODELS)
+
+    if not models:
+        if not _warned_grok_model_listing:
+            logger.warning("xAI image model listing returned no models; falling back to bundled defaults.")
+            _warned_grok_model_listing = True
+        return list(GROK_DEFAULT_MODELS)
+
+    return list(dict.fromkeys([*GROK_DEFAULT_MODELS, *models]))
 
 
 def _placeholder_dimensions(
@@ -71,6 +110,7 @@ def _bytes_list_to_comfy_image(
     requested_resolution: str | None = None,
     requested_width: int | None = None,
     requested_height: int | None = None,
+    provider_label: str = "Model",
 ):
     try:
         from io import BytesIO
@@ -90,7 +130,7 @@ def _bytes_list_to_comfy_image(
             requested_width=requested_width,
             requested_height=requested_height,
         )
-        logger.warning("Gemini returned no images; emitting a blank placeholder %dx%d.", width, height)
+        logger.warning("%s returned no images; emitting a blank placeholder %dx%d.", provider_label, width, height)
         return torch.zeros((1, height, width, 3), dtype=torch.float32)
 
     tensors = []
@@ -106,7 +146,7 @@ def _bytes_list_to_comfy_image(
                 requested_height=requested_height,
             )
             if mismatch:
-                logger.warning("Gemini output image %d: %s Output will not be resized.", idx, mismatch)
+                logger.warning("%s output image %d: %s Output will not be resized.", provider_label, idx, mismatch)
             arr = np.array(img).astype("float32") / 255.0
             tensors.append(torch.from_numpy(arr).unsqueeze(0))
     return torch.cat(tensors, dim=0)
@@ -191,7 +231,7 @@ if IO is not None:
                     IO.Combo.Input(
                         "model",
                         options=_model_dropdown_options(),
-                        default=DEFAULT_MODEL,
+                        default=GEMINI_DEFAULT_MODEL,
                         tooltip="Gemini model name (populated via models.list; requires API key).",
                     ),
                     IO.String.Input(
@@ -354,7 +394,7 @@ if IO is not None:
         ) -> Any:
             try:
                 prompt_image_bytes = _comfy_image_to_png_bytes(prompt_images)
-                request = build_request(
+                request = build_gemini_request(
                     model=model,
                     prompt=prompt,
                     response_modalities=response_modalities,
@@ -374,7 +414,7 @@ if IO is not None:
             except BetterGeminiConfigError as e:
                 raise ValueError(str(e)) from e
 
-            text, images = await generate_image(
+            text, images = await generate_gemini_image(
                 api_key=(api_key.strip() or None),
                 request=request,
                 system_prompt=system_prompt or "",
@@ -385,6 +425,122 @@ if IO is not None:
                 requested_resolution=request.image_resolution,
                 requested_width=request.image_width,
                 requested_height=request.image_height,
+                provider_label="Gemini",
+            )
+            return IO.NodeOutput(image_tensor, text)
+
+
+    class BetterGrok(IO.ComfyNode):
+        @classmethod
+        def define_schema(cls):
+            return IO.Schema(
+                node_id="BetterGrok",
+                display_name="Better Grok",
+                category="api node/image/BetterGrok",
+                description="Generate or edit images with xAI Grok using xAI's image generation REST API.",
+                not_idempotent=True,
+                inputs=[
+                    IO.String.Input(
+                        "prompt",
+                        multiline=True,
+                        default="",
+                        tooltip="Text prompt for image generation or image editing.",
+                    ),
+                    IO.Combo.Input(
+                        "model",
+                        options=_grok_model_dropdown_options(),
+                        default=GROK_DEFAULT_MODEL,
+                        tooltip="xAI image model name (populated via /v1/image-generation-models when XAI_API_KEY is available).",
+                    ),
+                    IO.String.Input(
+                        "api_key",
+                        optional=True,
+                        default="",
+                        tooltip="Optional. If empty, uses env var XAI_API_KEY.",
+                    ),
+                    IO.Image.Input(
+                        "prompt_images",
+                        optional=True,
+                        tooltip="Optional reference/edit images. Batched IMAGE tensors send multiple images to xAI's edits API.",
+                    ),
+                    IO.Combo.Input(
+                        "aspect_ratio",
+                        options=[
+                            "auto",
+                            "1:1",
+                            "16:9",
+                            "9:16",
+                            "4:3",
+                            "3:4",
+                            "3:2",
+                            "2:3",
+                            "2:1",
+                            "1:2",
+                            "19.5:9",
+                            "9:19.5",
+                            "20:9",
+                            "9:20",
+                        ],
+                        default="auto",
+                        tooltip="If 'auto', xAI chooses. Otherwise requests a specific aspect ratio supported by Grok image generation.",
+                        optional=True,
+                    ),
+                    IO.Combo.Input(
+                        "resolution",
+                        options=["auto", "1k", "2k"],
+                        default="auto",
+                        tooltip="Requested output resolution (best-effort). Logs a warning if the returned image size doesn't match.",
+                        optional=True,
+                    ),
+                    IO.Int.Input(
+                        "n",
+                        default=1,
+                        min=1,
+                        max=10,
+                        step=1,
+                        tooltip="Number of output images to request. xAI documents a maximum of 10 images per request.",
+                        optional=True,
+                    ),
+                ],
+                outputs=[
+                    IO.Image.Output(),
+                    IO.String.Output(),
+                ],
+            )
+
+        @classmethod
+        async def execute(
+            cls,
+            prompt: str,
+            model: str,
+            api_key: str = "",
+            prompt_images: Any = None,
+            aspect_ratio: str = "auto",
+            resolution: str = "auto",
+            n: int = 1,
+        ) -> Any:
+            try:
+                prompt_image_bytes = _comfy_image_to_png_bytes(prompt_images)
+                request = build_grok_request(
+                    model=model,
+                    prompt=prompt,
+                    input_images=prompt_image_bytes,
+                    aspect_ratio=aspect_ratio,
+                    resolution=resolution,
+                    n=n,
+                )
+            except BetterGrokConfigError as e:
+                raise ValueError(str(e)) from e
+
+            text, images = await generate_grok_images(
+                api_key=(api_key.strip() or None),
+                request=request,
+            )
+            image_tensor = _bytes_list_to_comfy_image(
+                images,
+                requested_aspect_ratio=request.aspect_ratio,
+                requested_resolution=request.resolution,
+                provider_label="Grok",
             )
             return IO.NodeOutput(image_tensor, text)
 
@@ -392,7 +548,7 @@ if IO is not None:
     class BetterGeminiExtension(ComfyExtension):
         @override
         async def get_node_list(self):
-            return [BetterGemini]
+            return [BetterGemini, BetterGrok]
 
 
 async def comfy_entrypoint():  # pragma: no cover

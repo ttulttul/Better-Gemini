@@ -46,6 +46,7 @@ class CoreTests(unittest.TestCase):
         self.assertEqual(max_dim_from_resolution("1K"), 1024)
         self.assertEqual(max_dim_from_resolution("2K"), 2048)
         self.assertEqual(max_dim_from_resolution("4K"), 4096)
+        self.assertEqual(max_dim_from_resolution("2k"), 2048)
 
     def test_build_request_requires_both_dimensions(self):
         with self.assertRaises(BetterGeminiConfigError):

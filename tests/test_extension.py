@@ -2,27 +2,29 @@ import unittest
 from unittest import mock
 
 from better_gemini import extension
-from better_gemini.genai_client import DEFAULT_MODELS
+from better_gemini.genai_client import DEFAULT_MODELS as GEMINI_DEFAULT_MODELS
+from better_gemini.grok_client import DEFAULT_MODELS as GROK_DEFAULT_MODELS
 
 
 class ExtensionTests(unittest.TestCase):
     def setUp(self):
-        extension._warned_model_listing = False
+        extension._warned_gemini_model_listing = False
+        extension._warned_grok_model_listing = False
 
     def test_model_dropdown_options_falls_back_to_bundled_defaults_on_error(self):
-        with mock.patch.object(extension, "list_models_sync", side_effect=RuntimeError("boom")):
+        with mock.patch.object(extension, "list_gemini_models_sync", side_effect=RuntimeError("boom")):
             options = extension._model_dropdown_options()
-        self.assertEqual(options, DEFAULT_MODELS)
+        self.assertEqual(options, GEMINI_DEFAULT_MODELS)
 
     def test_model_dropdown_options_falls_back_to_bundled_defaults_on_empty_list(self):
-        with mock.patch.object(extension, "list_models_sync", return_value=[]):
+        with mock.patch.object(extension, "list_gemini_models_sync", return_value=[]):
             options = extension._model_dropdown_options()
-        self.assertEqual(options, DEFAULT_MODELS)
+        self.assertEqual(options, GEMINI_DEFAULT_MODELS)
 
     def test_model_dropdown_options_prepends_bundled_defaults_when_listing_succeeds(self):
         with mock.patch.object(
             extension,
-            "list_models_sync",
+            "list_gemini_models_sync",
             return_value=[
                 "models/custom-image-model",
                 "models/gemini-3-pro-image-preview",
@@ -37,6 +39,35 @@ class ExtensionTests(unittest.TestCase):
                 "models/imagen-4.0-generate-001",
                 "models/imagen-4.0-ultra-generate-001",
                 "models/custom-image-model",
+            ],
+        )
+
+    def test_grok_model_dropdown_options_falls_back_to_bundled_defaults_on_error(self):
+        with mock.patch.object(extension, "list_grok_models_sync", side_effect=RuntimeError("boom")):
+            options = extension._grok_model_dropdown_options()
+        self.assertEqual(options, GROK_DEFAULT_MODELS)
+
+    def test_grok_model_dropdown_options_falls_back_to_bundled_defaults_on_empty_list(self):
+        with mock.patch.object(extension, "list_grok_models_sync", return_value=[]):
+            options = extension._grok_model_dropdown_options()
+        self.assertEqual(options, GROK_DEFAULT_MODELS)
+
+    def test_grok_model_dropdown_options_prepends_bundled_defaults_when_listing_succeeds(self):
+        with mock.patch.object(
+            extension,
+            "list_grok_models_sync",
+            return_value=[
+                "grok-imagine-image-ultra",
+                "grok-imagine-image",
+            ],
+        ):
+            options = extension._grok_model_dropdown_options()
+        self.assertEqual(
+            options,
+            [
+                "grok-imagine-image",
+                "grok-imagine-image-pro",
+                "grok-imagine-image-ultra",
             ],
         )
 

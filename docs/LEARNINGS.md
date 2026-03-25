@@ -9,4 +9,7 @@
 - `client.models.list()` returns model objects with `name` and `supported_actions`; filtering for `"generateContent"` is a good default for populating node model dropdowns (cache results to avoid repeated calls).
 - Not every model that supports `"generateContent"` can output images; if a selected model returns text-only, handle empty-image responses by returning a placeholder image and surfacing a note in the node’s text output.
 - For better offline/no-key ergonomics, keep a bundled fallback list of image-capable defaults in the model dropdown (currently Gemini image-preview + Imagen 4 options) and merge these defaults into successful `models.list()` responses without duplicates.
+- xAI’s image edit endpoint uses JSON, not multipart form data. Sending ComfyUI images as `data:image/png;base64,...` URLs matches the documented `/v1/images/edits` payload and avoids temporary file hosting.
+- xAI’s image generation endpoints can return temporary URLs or base64; requesting `response_format="b64_json"` is the simplest way to turn Grok responses into ComfyUI `IMAGE` tensors without a second download step.
+- xAI exposes `/v1/image-generation-models`, which is a better source for the Grok model dropdown than the generic `/v1/models` endpoint because it already scopes results to image-capable models.
 - Converting to `uv` project workflows works best by declaring dependencies in `pyproject.toml` and using `uv sync` / `uv run` as the default install+test path.
