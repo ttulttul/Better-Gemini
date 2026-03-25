@@ -6,7 +6,9 @@ from unittest import mock
 from better_gemini.grok_client import (
     DEFAULT_MODEL,
     DEFAULT_MODELS,
+    USER_AGENT,
     _MODEL_LIST_CACHE,
+    _build_headers,
     _build_image_request,
     generate_images_sync,
     list_models_sync,
@@ -20,6 +22,14 @@ class GrokClientTests(unittest.TestCase):
 
     def test_default_model_is_in_bundled_default_models(self):
         self.assertIn(DEFAULT_MODEL, DEFAULT_MODELS)
+
+    def test_build_headers_sets_explicit_user_agent(self):
+        headers = _build_headers(api_key="k", has_payload=True)
+        self.assertEqual(headers["Authorization"], "Bearer k")
+        self.assertEqual(headers["User-Agent"], USER_AGENT)
+        self.assertEqual(headers["Accept-Encoding"], "identity")
+        self.assertEqual(headers["Content-Type"], "application/json")
+
 
     def test_list_models_sync_parses_ids_and_aliases(self):
         with mock.patch(

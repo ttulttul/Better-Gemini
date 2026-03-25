@@ -16,6 +16,7 @@ from .grok_core import BetterGrokError, BetterGrokRequest
 logger = logging.getLogger(__name__)
 
 BASE_URL = "https://api.x.ai/v1"
+USER_AGENT = "ComfyUI-Better-Gemini/1.1.1 (https://github.com/ttulttul/Better-Gemini)"
 DEFAULT_MODEL = "grok-imagine-image"
 DEFAULT_MODELS = [
     "grok-imagine-image",
@@ -59,6 +60,28 @@ def _extract_error_message(body: str) -> str:
     return body.strip() or "empty error response"
 
 
+def _extract_error_payload(body: str) -> dict[str, Any] | None:
+    if not body:
+        return None
+    try:
+        payload = json.loads(body)
+    except Exception:
+        return None
+    return payload if isinstance(payload, dict) else None
+
+
+def _build_headers(*, api_key: str, has_payload: bool) -> dict[str, str]:
+    headers = {
+        "Authorization": f"Bearer {api_key}",
+        "Accept": "application/json",
+        "Accept-Encoding": "identity",
+        "User-Agent": USER_AGENT,
+    }
+    if has_payload:
+        headers["Content-Type"] = "application/json"
+    return headers
+
+
 def _request_json(
     *,
     method: str,
@@ -69,13 +92,9 @@ def _request_json(
 ) -> Any:
     url = f"{BASE_URL}{path}"
     data = None
-    headers = {
-        "Authorization": f"Bearer {api_key}",
-        "Accept": "application/json",
-    }
+    headers = _build_headers(api_key=api_key, has_payload=payload is not None)
     if payload is not None:
         data = json.dumps(payload).encode("utf-8")
-        headers["Content-Type"] = "application/json"
 
     request = Request(url=url, data=data, headers=headers, method=method)
     try:
@@ -83,8 +102,22 @@ def _request_json(
             body = response.read().decode("utf-8")
     except HTTPError as e:
         body = e.read().decode("utf-8", errors="replace")
+        error_payload = _extract_error_payload(body)
         message = _extract_error_message(body)
         logger.error("xAI API request failed: %s %s -> %s", method, path, message)
+
+        if (
+            e.code == 403
+            and isinstance(error_payload, dict)
+            and error_payload.get("error_code") == 1010
+        ):
+            raise BetterGrokError(
+                "xAI API request failed (403) for "
+                f"{path}: Cloudflare blocked the default client signature. "
+                "The node now sends an explicit application User-Agent; restart ComfyUI and retry. "
+                f"Original response: {message}"
+            ) from e
+
         raise BetterGrokError(f"xAI API request failed ({e.code}) for {path}: {message}") from e
     except URLError as e:
         logger.error("xAI API request failed: %s %s -> %s", method, path, e)
