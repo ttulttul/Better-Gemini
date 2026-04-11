@@ -57,32 +57,6 @@ class ExtensionTests(unittest.TestCase):
             (1, 1),
         )
 
-    def test_build_mustache_variable_list_with_string_value(self):
-        self.assertEqual(
-            extension._build_mustache_variable_list("name", "Ada"),
-            [{"name": "Ada"}],
-        )
-
-    def test_build_mustache_variable_list_with_list_value(self):
-        self.assertEqual(
-            extension._build_mustache_variable_list("items", ["one", "two"]),
-            [{"items": ["one", "two"]}],
-        )
-
-    def test_build_mustache_variable_list_accepts_tuple_of_strings(self):
-        self.assertEqual(
-            extension._build_mustache_variable_list("items", ("one", "two")),
-            [{"items": ["one", "two"]}],
-        )
-
-    def test_build_mustache_variable_list_rejects_empty_key(self):
-        with self.assertRaises(ValueError):
-            extension._build_mustache_variable_list("", "Ada")
-
-    def test_build_mustache_variable_list_rejects_non_string_values(self):
-        with self.assertRaises(TypeError):
-            extension._build_mustache_variable_list("items", ["one", 2])  # type: ignore[list-item]
-
     def test_grok_model_dropdown_options_falls_back_to_bundled_defaults_on_error(self):
         with mock.patch.object(extension, "list_grok_models_sync", side_effect=RuntimeError("boom")):
             options = extension._grok_model_dropdown_options()

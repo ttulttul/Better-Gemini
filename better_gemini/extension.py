@@ -26,29 +26,6 @@ from .grok_core import BetterGrokConfigError, build_request as build_grok_reques
 logger = logging.getLogger(__name__)
 _warned_gemini_model_listing = False
 _warned_grok_model_listing = False
-MUSTACHE_VARIABLE_LIST_TYPE = "MUSTACHE_VARIABLE_LIST"
-
-
-def _normalize_mustache_variable_value(value: Any) -> str | list[str]:
-    if isinstance(value, str):
-        return value
-    if isinstance(value, tuple):
-        value = list(value)
-    if isinstance(value, list):
-        if not all(isinstance(item, str) for item in value):
-            raise TypeError("`value` must be a string or a list of strings.")
-        return list(value)
-    raise TypeError("`value` must be a string or a list of strings.")
-
-
-def _build_mustache_variable_list(key: str, value: Any) -> list[dict[str, str | list[str]]]:
-    if not isinstance(key, str) or not key.strip():
-        raise ValueError("`key` must be a non-empty string.")
-
-    normalized_key = key.strip()
-    normalized_value = _normalize_mustache_variable_value(value)
-    logger.debug("Built mustache variable entry for key=%s value_type=%s", normalized_key, type(normalized_value).__name__)
-    return [{normalized_key: normalized_value}]
 
 
 def _model_dropdown_options() -> list[str]:
@@ -575,43 +552,10 @@ if IO is not None:
             return IO.NodeOutput(image_tensor, text)
 
 
-    class MustacheVariable(IO.ComfyNode):
-        @classmethod
-        def define_schema(cls):
-            return IO.Schema(
-                node_id="MustacheVariable",
-                display_name="Mustache Variable",
-                category="api node/text/Mustache",
-                description="Build a mustache variable list entry from a key and a string or list-of-strings value.",
-                inputs=[
-                    IO.String.Input(
-                        "key",
-                        default="",
-                        tooltip="Mustache variable key to emit.",
-                    ),
-                    IO.AnyType.Input(
-                        "value",
-                        tooltip="String value or list of strings for this mustache variable.",
-                    ),
-                ],
-                outputs=[
-                    IO.Custom(MUSTACHE_VARIABLE_LIST_TYPE).Output(display_name="mustache_variables"),
-                ],
-            )
-
-        @classmethod
-        async def execute(
-            cls,
-            key: str,
-            value: Any,
-        ) -> Any:
-            return IO.NodeOutput(_build_mustache_variable_list(key, value))
-
-
     class BetterGeminiExtension(ComfyExtension):
         @override
         async def get_node_list(self):
-            return [BetterGemini, BetterGrok, MustacheVariable]
+            return [BetterGemini, BetterGrok]
 
 
 async def comfy_entrypoint():  # pragma: no cover
