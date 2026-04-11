@@ -24,6 +24,9 @@ Custom ComfyUI node(s) for generating images and text with Google Gemini and xAI
 - `Better Grok` (image)
   - Inputs: prompt, model (dropdown; populated via `/v1/image-generation-models` when `XAI_API_KEY` is available), prompt_images (optional), aspect ratio, resolution, `n`.
   - Outputs: `IMAGE`, `STRING` (status / notes).
+- `Mustache Variable` (template support)
+  - Inputs: `key`, `value`.
+  - Output: `MUSTACHE_VARIABLE_LIST`, represented as a single-entry list like `[{"name": "Ada"}]` or `[{"items": ["one", "two"]}]`.
 
 ## Example Workflow
 
@@ -42,6 +45,7 @@ Custom ComfyUI node(s) for generating images and text with Google Gemini and xAI
 - Grok image edits use xAI’s JSON-based `/v1/images/edits` API and send ComfyUI `IMAGE` inputs as PNG data URIs. Multiple prompt images are supported for edit/merge workflows.
 - `resolution`/`aspect_ratio` are best-effort (model-dependent). The node logs a warning if the returned size doesn’t match (no auto-resize).
 - If Gemini or Grok returns no images, the node returns a blank placeholder image and includes a note in the `STRING` output. In Gemini `TEXT` mode, the placeholder is a minimal 1x1 tensor so text-only flows do not allocate a large dummy image.
+- The `Mustache Variable` node accepts either a single string or a list of strings for `value` and emits a `MUSTACHE_VARIABLE_LIST` custom socket payload for downstream template/render nodes.
 
 ## Dev
 
