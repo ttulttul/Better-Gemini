@@ -16,7 +16,9 @@ logger = logging.getLogger(__name__)
 
 DEFAULT_MODEL = "models/gemini-3-pro-image-preview"
 DEFAULT_MODELS = [
+    "models/gemini-3-flash-preview",
     "models/gemini-3.1-flash-image-preview",
+    "models/gemini-3.1-flash-lite-preview",
     "models/gemini-3-pro-image-preview",
     "models/gemini-3.1-pro-preview",
     "models/imagen-4.0-generate-001",
