@@ -102,7 +102,7 @@ class GenaiClientTests(unittest.TestCase):
         )
         self.assertEqual(_build_types_config(_Types, req), {"response_modalities": ["TEXT"], "responseModalities": ["TEXT"]})
 
-    def test_list_models_sync_filters_generate_content_and_sorts(self):
+    def test_list_models_sync_lists_all_models_and_sorts(self):
         class _Model:
             def __init__(self, name, supported_actions=None, supportedActions=None):
                 self.name = name
@@ -145,14 +145,15 @@ class GenaiClientTests(unittest.TestCase):
             else:
                 sys.modules["google.genai"] = prior_google_genai
 
-        self.assertEqual(models, ["models/alpha", "models/beta", "models/delta", "models/zeta"])
+        self.assertEqual(models, ["models/alpha", "models/beta", "models/delta", "models/ignored", "models/zeta"])
 
-    def test_list_models_sync_allows_unfiltered_listing(self):
+    def test_list_models_sync_can_still_filter_when_requested(self):
         class _Models:
             def list(self):
                 return [
                     {"name": "models/a", "supportedActions": []},
                     {"name": "models/b", "supportedActions": ["somethingElse"]},
+                    {"name": "models/c", "supportedActions": ["generateContent"]},
                 ]
 
         class _Client:
@@ -169,7 +170,7 @@ class GenaiClientTests(unittest.TestCase):
         sys.modules["google"] = google
         sys.modules["google.genai"] = genai
         try:
-            models = list_models_sync(api_key="k", filter_action=None, cache_ttl_s=0)
+            models = list_models_sync(api_key="k", filter_action="generateContent", cache_ttl_s=0)
         finally:
             if prior_google is None:
                 sys.modules.pop("google", None)
@@ -180,7 +181,7 @@ class GenaiClientTests(unittest.TestCase):
             else:
                 sys.modules["google.genai"] = prior_google_genai
 
-        self.assertEqual(models, ["models/a", "models/b"])
+        self.assertEqual(models, ["models/c"])
 
     def test_list_models_sync_requires_api_key(self):
         class _Models:

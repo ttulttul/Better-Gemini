@@ -276,13 +276,11 @@ def _model_name(model: Any) -> str | None:
 def list_models_sync(
     *,
     api_key: str | None,
-    filter_action: str | None = "generateContent",
+    filter_action: str | None = None,
     cache_ttl_s: int = _MODEL_LIST_CACHE_TTL_S,
 ) -> list[str]:
     """
     List available models using the official `google-genai` SDK (`client.models.list()`).
-
-    `filter_action` defaults to "generateContent" to match the node's usage.
     """
 
     try:

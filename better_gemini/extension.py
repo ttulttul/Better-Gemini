@@ -31,7 +31,7 @@ _warned_grok_model_listing = False
 def _model_dropdown_options() -> list[str]:
     global _warned_gemini_model_listing
     try:
-        models = list_gemini_models_sync(api_key=None, filter_action="generateContent")
+        models = list_gemini_models_sync(api_key=None)
     except Exception as e:
         if not _warned_gemini_model_listing:
             logger.warning("Unable to list Gemini models for dropdown; falling back to bundled defaults. %s", e)
