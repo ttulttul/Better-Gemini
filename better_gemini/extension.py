@@ -76,7 +76,11 @@ def _placeholder_dimensions(
     requested_resolution: str | None,
     requested_width: int | None,
     requested_height: int | None,
+    empty_placeholder: bool = False,
 ) -> tuple[int, int]:
+    if empty_placeholder:
+        return 1, 1
+
     if requested_width is not None and requested_height is not None:
         return requested_width, requested_height
 
@@ -111,6 +115,7 @@ def _bytes_list_to_comfy_image(
     requested_width: int | None = None,
     requested_height: int | None = None,
     provider_label: str = "Model",
+    empty_placeholder: bool = False,
 ):
     try:
         from io import BytesIO
@@ -129,6 +134,7 @@ def _bytes_list_to_comfy_image(
             requested_resolution=requested_resolution,
             requested_width=requested_width,
             requested_height=requested_height,
+            empty_placeholder=empty_placeholder,
         )
         logger.warning("%s returned no images; emitting a blank placeholder %dx%d.", provider_label, width, height)
         return torch.zeros((1, height, width, 3), dtype=torch.float32)
@@ -219,14 +225,14 @@ if IO is not None:
                 node_id="BetterGemini",
                 display_name="Better Gemini",
                 category="api node/image/BetterGemini",
-                description="Generate images with Google Gemini using the official `google-genai` Python SDK.",
+                description="Generate images or text with Google Gemini using the official `google-genai` Python SDK.",
                 not_idempotent=True,
                 inputs=[
                     IO.String.Input(
                         "prompt",
                         multiline=True,
                         default="",
-                        tooltip="Text prompt for image generation.",
+                        tooltip="Text prompt for image or text generation.",
                     ),
                     IO.Combo.Input(
                         "model",
@@ -242,9 +248,9 @@ if IO is not None:
                     ),
                     IO.Combo.Input(
                         "response_modalities",
-                        options=["IMAGE", "IMAGE+TEXT"],
+                        options=["IMAGE", "IMAGE+TEXT", "TEXT"],
                         default="IMAGE+TEXT",
-                        tooltip="Choose IMAGE-only output, or IMAGE+TEXT to also return text.",
+                        tooltip="Choose IMAGE-only output, IMAGE+TEXT for multimodal responses, or TEXT for text-only generation.",
                     ),
                     IO.Image.Input(
                         "prompt_images",
@@ -426,6 +432,7 @@ if IO is not None:
                 requested_width=request.image_width,
                 requested_height=request.image_height,
                 provider_label="Gemini",
+                empty_placeholder="IMAGE" not in request.response_modalities,
             )
             return IO.NodeOutput(image_tensor, text)
 

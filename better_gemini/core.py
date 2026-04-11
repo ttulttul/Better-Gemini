@@ -40,6 +40,8 @@ SUPPORTED_IMAGE_RESOLUTIONS: tuple[str, ...] = (
     "4K",
 )
 
+SUPPORTED_RESPONSE_MODALITIES: frozenset[str] = frozenset({"IMAGE", "TEXT"})
+
 
 @dataclass(frozen=True)
 class BetterGeminiRequest:
@@ -127,9 +129,14 @@ def build_request(
     if not model or not isinstance(model, str):
         raise BetterGeminiConfigError("`model` must be a non-empty string.")
 
-    modalities = tuple(m.strip().upper() for m in response_modalities.split("+") if m.strip())
+    modalities = tuple(dict.fromkeys(m.strip().upper() for m in response_modalities.split("+") if m.strip()))
     if not modalities:
         raise BetterGeminiConfigError("`response_modalities` must include at least one modality.")
+    unsupported_modalities = tuple(modality for modality in modalities if modality not in SUPPORTED_RESPONSE_MODALITIES)
+    if unsupported_modalities:
+        raise BetterGeminiConfigError(
+            "Unsupported response modality value(s): {}.".format(", ".join(repr(modality) for modality in unsupported_modalities))
+        )
 
     ar = aspect_ratio or "auto"
     if ar not in SUPPORTED_ASPECT_RATIOS:

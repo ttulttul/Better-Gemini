@@ -18,6 +18,7 @@ DEFAULT_MODEL = "models/gemini-3-pro-image-preview"
 DEFAULT_MODELS = [
     "models/gemini-3.1-flash-image-preview",
     "models/gemini-3-pro-image-preview",
+    "models/gemini-3.1-pro-preview",
     "models/imagen-4.0-generate-001",
     "models/imagen-4.0-ultra-generate-001",
 ]
@@ -75,7 +76,7 @@ def _build_types_config(types_module: Any, request: BetterGeminiRequest) -> Any:
         if thinking_cfg is not None:
             _set_kwarg_candidates(config_kwargs, ["thinking_config", "thinkingConfig"], thinking_cfg)
 
-    if image_cfg_cls is not None and (
+    if image_cfg_cls is not None and "IMAGE" in request.response_modalities and (
         request.image_aspect_ratio or request.image_resolution or (request.image_width and request.image_height)
     ):
         image_kwargs: dict[str, Any] = {}
@@ -125,6 +126,9 @@ def _call_generate_content(client: Any, *, model: str, contents: Any, config: An
 
 
 def _build_image_config_patch(request: BetterGeminiRequest) -> dict[str, Any] | None:
+    if "IMAGE" not in request.response_modalities:
+        return None
+
     image_cfg: dict[str, Any] = {}
     if request.image_aspect_ratio:
         image_cfg["aspectRatio"] = request.image_aspect_ratio

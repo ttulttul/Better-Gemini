@@ -10,6 +10,7 @@ from better_gemini.genai_client import (
     _MODEL_LIST_CACHE,
     _build_contents,
     _build_image_config_patch,
+    _build_types_config,
     generate_image_sync,
     list_models_sync,
 )
@@ -82,6 +83,24 @@ class GenaiClientTests(unittest.TestCase):
             image_height=480,
         )
         self.assertEqual(_build_image_config_patch(req), {"imageConfig": {"width": 640, "height": 480}})
+
+    def test_build_image_config_patch_skips_text_only_requests(self):
+        req = BetterGeminiRequest(
+            model="m",
+            prompt="p",
+            response_modalities=("TEXT",),
+            image_resolution="2K",
+        )
+        self.assertIsNone(_build_image_config_patch(req))
+
+    def test_build_types_config_skips_image_config_for_text_only_requests(self):
+        req = BetterGeminiRequest(
+            model="m",
+            prompt="p",
+            response_modalities=("TEXT",),
+            image_resolution="2K",
+        )
+        self.assertEqual(_build_types_config(_Types, req), {"response_modalities": ["TEXT"], "responseModalities": ["TEXT"]})
 
     def test_list_models_sync_filters_generate_content_and_sorts(self):
         class _Model:
@@ -251,6 +270,55 @@ class GenaiClientTests(unittest.TestCase):
         self.assertEqual(images, [])
         self.assertIn("hi", text)
         self.assertIn("Gemini returned no images for model models/text-only.", text)
+
+    def test_generate_image_sync_text_only_request_returns_text_without_no_image_warning(self):
+        response = {"candidates": [{"content": {"parts": [{"text": "hi"}]}}]}
+
+        class _Models:
+            def generate_content(self, *, model=None, contents=None, config=None, **kwargs):
+                return response
+
+        class _Client:
+            def __init__(self, api_key=None, **kwargs):
+                self.models = _Models()
+
+        google = types.ModuleType("google")
+        genai = types.ModuleType("google.genai")
+        genai.Client = _Client  # type: ignore[attr-defined]
+        genai_types = types.ModuleType("google.genai.types")
+        google.genai = genai  # type: ignore[attr-defined]
+
+        prior_google = sys.modules.get("google")
+        prior_google_genai = sys.modules.get("google.genai")
+        prior_google_genai_types = sys.modules.get("google.genai.types")
+        sys.modules["google"] = google
+        sys.modules["google.genai"] = genai
+        sys.modules["google.genai.types"] = genai_types
+        try:
+            text, images = generate_image_sync(
+                api_key="k",
+                request=BetterGeminiRequest(
+                    model="models/gemini-3.1-pro-preview",
+                    prompt="p",
+                    response_modalities=("TEXT",),
+                ),
+            )
+        finally:
+            if prior_google is None:
+                sys.modules.pop("google", None)
+            else:
+                sys.modules["google"] = prior_google
+            if prior_google_genai is None:
+                sys.modules.pop("google.genai", None)
+            else:
+                sys.modules["google.genai"] = prior_google_genai
+            if prior_google_genai_types is None:
+                sys.modules.pop("google.genai.types", None)
+            else:
+                sys.modules["google.genai.types"] = prior_google_genai_types
+
+        self.assertEqual(text, "hi")
+        self.assertEqual(images, [])
 
 
 if __name__ == "__main__":

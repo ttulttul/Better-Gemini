@@ -36,10 +36,23 @@ class ExtensionTests(unittest.TestCase):
             [
                 "models/gemini-3.1-flash-image-preview",
                 "models/gemini-3-pro-image-preview",
+                "models/gemini-3.1-pro-preview",
                 "models/imagen-4.0-generate-001",
                 "models/imagen-4.0-ultra-generate-001",
                 "models/custom-image-model",
             ],
+        )
+
+    def test_placeholder_dimensions_returns_minimal_empty_placeholder(self):
+        self.assertEqual(
+            extension._placeholder_dimensions(
+                requested_aspect_ratio="16:9",
+                requested_resolution="4K",
+                requested_width=1920,
+                requested_height=1080,
+                empty_placeholder=True,
+            ),
+            (1, 1),
         )
 
     def test_grok_model_dropdown_options_falls_back_to_bundled_defaults_on_error(self):

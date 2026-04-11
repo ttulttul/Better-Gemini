@@ -131,6 +131,22 @@ class CoreTests(unittest.TestCase):
         )
         self.assertEqual(req.seed, 768631311)
 
+    def test_build_request_accepts_text_only_modality(self):
+        req = build_request(
+            model="m",
+            prompt="p",
+            response_modalities="TEXT",
+        )
+        self.assertEqual(req.response_modalities, ("TEXT",))
+
+    def test_build_request_rejects_unknown_modality(self):
+        with self.assertRaises(BetterGeminiConfigError):
+            build_request(
+                model="m",
+                prompt="p",
+                response_modalities="AUDIO",
+            )
+
     def test_build_request_accepts_input_images(self):
         req = build_request(
             model="m",
