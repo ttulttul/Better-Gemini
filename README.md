@@ -20,6 +20,7 @@ Custom ComfyUI node(s) for generating images and text with Google Gemini and xAI
 - `Better Gemini` (image / text)
   - Inputs: prompt, model (dropdown; populated via `models.list()`), `response_modalities` (`IMAGE`, `IMAGE+TEXT`, or `TEXT`), prompt_images (optional), aspect ratio, resolution / width+height, temperature, top_p/top_k, max tokens, thinking difficulty, seed.
   - Outputs: `IMAGE`, `STRING` (returned text / notes). `TEXT` mode emits a minimal blank `IMAGE` tensor and places the usable result in `STRING`.
+  - Use `TEXT` with text-only Gemini models such as `gemini-3-flash-preview`, `gemini-3.1-flash-lite-preview`, or `gemini-3.1-pro-preview` when you want the node to behave like an LLM call instead of an image generator.
 - `Better Grok` (image)
   - Inputs: prompt, model (dropdown; populated via `/v1/image-generation-models` when `XAI_API_KEY` is available), prompt_images (optional), aspect ratio, resolution, `n`.
   - Outputs: `IMAGE`, `STRING` (status / notes).
@@ -33,6 +34,7 @@ Custom ComfyUI node(s) for generating images and text with Google Gemini and xAI
 - The Gemini node imports `google-genai` lazily so ComfyUI can still boot even if dependencies aren’t installed yet; execution will raise a clear error until installed.
 - This extension uses ComfyUI’s V3 extension loader (`comfy_entrypoint`).
 - The Gemini `model` dropdown is populated via `client.models.list()` without action-based filtering, so text-only and image-capable Gemini models can both appear. It requires an API key via `GOOGLE_API_KEY`/`GEMINI_API_KEY`; otherwise it falls back to bundled defaults and logs a warning: `gemini-3-flash-preview`, `gemini-3.1-flash-image-preview`, `gemini-3.1-flash-lite-preview`, `gemini-3-pro-image-preview`, `gemini-3.1-pro-preview`, `imagen-4.0-generate-001`, `imagen-4.0-ultra-generate-001`.
+- When `response_modalities=TEXT`, Gemini requests omit image-specific config and the node's usable output is returned entirely through `STRING`.
 - The Grok `model` dropdown is populated via xAI’s `/v1/image-generation-models`. It requires `XAI_API_KEY`; otherwise it falls back to bundled defaults and logs a warning: `grok-imagine-image`, `grok-imagine-image-pro`.
 - Gemini requires `seed` to fit in an `int32`; larger ComfyUI seeds are deterministically folded via `seed % 2**31`.
 - Grok image generation is wired against xAI’s documented image endpoints and requests `response_format="b64_json"`, so the node can return image tensors directly instead of downloading temporary URLs.
