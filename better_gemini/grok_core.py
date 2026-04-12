@@ -40,12 +40,14 @@ SUPPORTED_IMAGE_RESOLUTIONS: tuple[str, ...] = (
 
 MAX_EDIT_IMAGES = 5
 MAX_IMAGES_PER_REQUEST = 10
+SUPPORTED_RESPONSE_MODALITIES: frozenset[str] = frozenset({"IMAGE", "TEXT"})
 
 
 @dataclass(frozen=True)
 class BetterGrokRequest:
     model: str
     prompt: str
+    response_modalities: tuple[str, ...] = ("IMAGE",)
     aspect_ratio: str | None = None
     resolution: str | None = None
     n: int = 1
@@ -56,6 +58,7 @@ def build_request(
     *,
     model: str,
     prompt: str,
+    response_modalities: str = "IMAGE",
     aspect_ratio: str = "auto",
     resolution: str = "auto",
     n: int = 1,
@@ -65,6 +68,17 @@ def build_request(
         raise BetterGrokConfigError("`prompt` must be a non-empty string.")
     if not model or not isinstance(model, str):
         raise BetterGrokConfigError("`model` must be a non-empty string.")
+
+    modalities = tuple(dict.fromkeys(m.strip().upper() for m in response_modalities.split("+") if m.strip()))
+    if not modalities:
+        raise BetterGrokConfigError("`response_modalities` must include at least one modality.")
+    unsupported_modalities = tuple(modality for modality in modalities if modality not in SUPPORTED_RESPONSE_MODALITIES)
+    if unsupported_modalities:
+        raise BetterGrokConfigError(
+            "Unsupported response modality value(s): {}.".format(
+                ", ".join(repr(modality) for modality in unsupported_modalities)
+            )
+        )
 
     resolved_aspect_ratio = (aspect_ratio or "auto").strip()
     if resolved_aspect_ratio not in SUPPORTED_ASPECT_RATIOS:
@@ -99,11 +113,13 @@ def build_request(
             f"xAI image edits support up to {MAX_EDIT_IMAGES} input images; got {len(resolved_input_images)}."
         )
 
+    image_requested = "IMAGE" in modalities
     return BetterGrokRequest(
         model=model.strip(),
         prompt=prompt,
-        aspect_ratio=resolved_aspect_ratio if resolved_aspect_ratio != "auto" else None,
-        resolution=resolved_resolution if resolved_resolution != "auto" else None,
-        n=n,
+        response_modalities=modalities,
+        aspect_ratio=resolved_aspect_ratio if image_requested and resolved_aspect_ratio != "auto" else None,
+        resolution=resolved_resolution if image_requested and resolved_resolution != "auto" else None,
+        n=n if image_requested else 1,
         input_images=tuple(resolved_input_images),
     )

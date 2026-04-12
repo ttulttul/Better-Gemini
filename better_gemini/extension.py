@@ -18,7 +18,7 @@ from .genai_client import (
 from .grok_client import (
     DEFAULT_MODEL as GROK_DEFAULT_MODEL,
     DEFAULT_MODELS as GROK_DEFAULT_MODELS,
-    generate_images as generate_grok_images,
+    generate_content as generate_grok_content,
     list_models_sync as list_grok_models_sync,
 )
 from .grok_core import BetterGrokConfigError, build_request as build_grok_request
@@ -55,15 +55,15 @@ def _grok_model_dropdown_options() -> list[str]:
         models = list_grok_models_sync(api_key=None)
     except Exception as e:
         if not _warned_grok_model_listing:
-            logger.warning("Unable to list xAI image models for dropdown; falling back to bundled defaults. %s", e)
+            logger.warning("Unable to list xAI models for dropdown; falling back to bundled defaults. %s", e)
             _warned_grok_model_listing = True
         else:
-            logger.debug("Unable to list xAI image models for dropdown; using bundled defaults.", exc_info=True)
+            logger.debug("Unable to list xAI models for dropdown; using bundled defaults.", exc_info=True)
         return list(GROK_DEFAULT_MODELS)
 
     if not models:
         if not _warned_grok_model_listing:
-            logger.warning("xAI image model listing returned no models; falling back to bundled defaults.")
+            logger.warning("xAI model listing returned no models; falling back to bundled defaults.")
             _warned_grok_model_listing = True
         return list(GROK_DEFAULT_MODELS)
 
@@ -444,7 +444,7 @@ if IO is not None:
                 node_id="BetterGrok",
                 display_name="Better Grok",
                 category="api node/image/BetterGrok",
-                description="Generate or edit images with xAI Grok using xAI's image generation REST API.",
+                description="Generate images or text with xAI Grok using xAI's image generation and chat completion APIs.",
                 not_idempotent=True,
                 inputs=[
                     IO.String.Input(
@@ -457,7 +457,7 @@ if IO is not None:
                         "model",
                         options=_grok_model_dropdown_options(),
                         default=GROK_DEFAULT_MODEL,
-                        tooltip="xAI image model name (populated via /v1/image-generation-models when XAI_API_KEY is available).",
+                        tooltip="xAI model name. The dropdown merges image and language models when XAI_API_KEY is available.",
                     ),
                     IO.String.Input(
                         "api_key",
@@ -465,10 +465,16 @@ if IO is not None:
                         default="",
                         tooltip="Optional. If empty, uses env var XAI_API_KEY.",
                     ),
+                    IO.Combo.Input(
+                        "response_modalities",
+                        options=["IMAGE", "IMAGE+TEXT", "TEXT"],
+                        default="IMAGE",
+                        tooltip="Choose IMAGE output for Grok image generation, IMAGE+TEXT to keep image generation plus node notes, or TEXT to call Grok chat completions and return the result through STRING.",
+                    ),
                     IO.Image.Input(
                         "prompt_images",
                         optional=True,
-                        tooltip="Optional reference/edit images. Batched IMAGE tensors send multiple images to xAI's edits API.",
+                        tooltip="Optional reference/edit images. IMAGE modes send them to xAI's edits API; TEXT mode sends them as chat image inputs.",
                     ),
                     IO.Combo.Input(
                         "aspect_ratio",
@@ -521,6 +527,7 @@ if IO is not None:
             prompt: str,
             model: str,
             api_key: str = "",
+            response_modalities: str = "IMAGE",
             prompt_images: Any = None,
             aspect_ratio: str = "auto",
             resolution: str = "auto",
@@ -531,6 +538,7 @@ if IO is not None:
                 request = build_grok_request(
                     model=model,
                     prompt=prompt,
+                    response_modalities=response_modalities,
                     input_images=prompt_image_bytes,
                     aspect_ratio=aspect_ratio,
                     resolution=resolution,
@@ -539,7 +547,7 @@ if IO is not None:
             except BetterGrokConfigError as e:
                 raise ValueError(str(e)) from e
 
-            text, images = await generate_grok_images(
+            text, images = await generate_grok_content(
                 api_key=(api_key.strip() or None),
                 request=request,
             )
@@ -548,6 +556,7 @@ if IO is not None:
                 requested_aspect_ratio=request.aspect_ratio,
                 requested_resolution=request.resolution,
                 provider_label="Grok",
+                empty_placeholder="IMAGE" not in request.response_modalities,
             )
             return IO.NodeOutput(image_tensor, text)
 

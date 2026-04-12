@@ -18,10 +18,17 @@ logger = logging.getLogger(__name__)
 BASE_URL = "https://api.x.ai/v1"
 USER_AGENT = "ComfyUI-Better-Gemini/1.1.1 (https://github.com/ttulttul/Better-Gemini)"
 DEFAULT_MODEL = "grok-imagine-image"
-DEFAULT_MODELS = [
+DEFAULT_IMAGE_MODELS = [
     "grok-imagine-image",
     "grok-imagine-image-pro",
 ]
+DEFAULT_TEXT_MODELS = [
+    "grok-4",
+    "grok-4-fast-non-reasoning",
+    "grok-3-mini",
+    "grok-code-fast-1",
+]
+DEFAULT_MODELS = list(dict.fromkeys([*DEFAULT_IMAGE_MODELS, *DEFAULT_TEXT_MODELS]))
 _MODEL_LIST_CACHE: dict[str, tuple[float, list[str]]] = {}
 _MODEL_LIST_CACHE_TTL_S = 10 * 60
 
@@ -147,23 +154,46 @@ def _parse_model_names(payload: Any) -> list[str]:
     return sorted(dict.fromkeys(names))
 
 
-def list_models_sync(*, api_key: str | None, cache_ttl_s: int = _MODEL_LIST_CACHE_TTL_S) -> list[str]:
+def _model_list_cache_key(*, api_key: str, model_type: str) -> str:
+    digest = hashlib.sha256(api_key.encode("utf-8")).hexdigest()
+    return f"{model_type}:{digest}"
+
+
+def list_models_sync(
+    *,
+    api_key: str | None,
+    model_type: str = "all",
+    cache_ttl_s: int = _MODEL_LIST_CACHE_TTL_S,
+) -> list[str]:
     resolved_api_key = api_key or _first_env("XAI_API_KEY")
     if not resolved_api_key:
         raise BetterGrokError("No API key provided. Set `XAI_API_KEY` or pass `api_key`.")
+    if model_type not in {"all", "image", "language"}:
+        raise BetterGrokError(f"Unsupported Grok model listing type: {model_type!r}")
 
-    cache_key = hashlib.sha256(resolved_api_key.encode("utf-8")).hexdigest()
+    cache_key = _model_list_cache_key(api_key=resolved_api_key, model_type=model_type)
     now = time.monotonic()
     if cache_ttl_s > 0:
         cached = _MODEL_LIST_CACHE.get(cache_key)
         if cached is not None:
             cached_at, models = cached
             if now - cached_at < cache_ttl_s:
-                logger.debug("Using cached xAI image model list (%d models).", len(models))
+                logger.debug("Using cached xAI %s model list (%d models).", model_type, len(models))
                 return list(models)
 
-    payload = _request_json(method="GET", path="/image-generation-models", api_key=resolved_api_key)
-    models = _parse_model_names(payload)
+    paths: list[str]
+    if model_type == "image":
+        paths = ["/image-generation-models"]
+    elif model_type == "language":
+        paths = ["/language-models"]
+    else:
+        paths = ["/image-generation-models", "/language-models"]
+
+    models: list[str] = []
+    for path in paths:
+        payload = _request_json(method="GET", path=path, api_key=resolved_api_key)
+        models.extend(_parse_model_names(payload))
+    models = sorted(dict.fromkeys(models))
     if cache_ttl_s > 0:
         _MODEL_LIST_CACHE[cache_key] = (now, models)
     return list(models)
@@ -191,6 +221,64 @@ def _build_image_request(request: BetterGrokRequest) -> tuple[str, dict[str, Any
         return "/images/edits", payload, "edit"
 
     return "/images/generations", payload, "generation"
+
+
+def _build_text_messages(request: BetterGrokRequest) -> list[dict[str, Any]]:
+    if not request.input_images:
+        return [{"role": "user", "content": request.prompt}]
+
+    content: list[dict[str, Any]] = [{"type": "text", "text": request.prompt}]
+    for image in request.input_images:
+        content.append(
+            {
+                "type": "image_url",
+                "image_url": {
+                    "url": _data_uri_from_bytes(image),
+                },
+            }
+        )
+    return [{"role": "user", "content": content}]
+
+
+def _extract_text_content(content: Any) -> str:
+    if isinstance(content, str):
+        return content.strip()
+    if not isinstance(content, list):
+        return ""
+
+    texts: list[str] = []
+    for item in content:
+        if not isinstance(item, dict):
+            continue
+        if item.get("type") == "text":
+            text = item.get("text")
+            if isinstance(text, str) and text.strip():
+                texts.append(text.strip())
+    return "\n\n".join(texts).strip()
+
+
+def _extract_chat_text(response: Any) -> tuple[str, str]:
+    if not isinstance(response, dict):
+        return "", ""
+
+    model_used = response.get("model")
+    if not isinstance(model_used, str) or not model_used.strip():
+        model_used = ""
+
+    choices = response.get("choices")
+    if not isinstance(choices, list):
+        return model_used, ""
+
+    for choice in choices:
+        if not isinstance(choice, dict):
+            continue
+        message = choice.get("message")
+        if not isinstance(message, dict):
+            continue
+        text = _extract_text_content(message.get("content"))
+        if text:
+            return model_used, text
+    return model_used, ""
 
 
 def _decode_b64_json(item: Any) -> bytes | None:
@@ -251,5 +339,43 @@ def generate_images_sync(*, api_key: str | None, request: BetterGrokRequest) -> 
     return "\n\n".join(notes).strip(), images
 
 
+def generate_text_sync(*, api_key: str | None, request: BetterGrokRequest) -> tuple[str, list[bytes]]:
+    resolved_api_key = api_key or _first_env("XAI_API_KEY")
+    if not resolved_api_key:
+        raise BetterGrokError("No API key provided. Set `XAI_API_KEY` or pass `api_key`.")
+
+    payload = {
+        "model": request.model,
+        "messages": _build_text_messages(request),
+    }
+    logger.info(
+        "Calling xAI chat completions API with model=%s prompt_images=%d",
+        request.model,
+        len(request.input_images),
+    )
+    response = _request_json(method="POST", path="/chat/completions", api_key=resolved_api_key, payload=payload)
+    model_used, text = _extract_chat_text(response)
+    if text:
+        return text, []
+
+    resolved_model = model_used or request.model
+    message = (
+        f"xAI returned no text for model {resolved_model}. "
+        "The request may have been filtered or the API response may have changed."
+    )
+    logger.warning(message)
+    return message, []
+
+
+def generate_sync(*, api_key: str | None, request: BetterGrokRequest) -> tuple[str, list[bytes]]:
+    if "IMAGE" in request.response_modalities:
+        return generate_images_sync(api_key=api_key, request=request)
+    return generate_text_sync(api_key=api_key, request=request)
+
+
 async def generate_images(*, api_key: str | None, request: BetterGrokRequest) -> tuple[str, list[bytes]]:
     return await asyncio.to_thread(generate_images_sync, api_key=api_key, request=request)
+
+
+async def generate_content(*, api_key: str | None, request: BetterGrokRequest) -> tuple[str, list[bytes]]:
+    return await asyncio.to_thread(generate_sync, api_key=api_key, request=request)

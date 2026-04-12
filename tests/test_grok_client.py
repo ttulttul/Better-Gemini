@@ -6,11 +6,17 @@ from unittest import mock
 from better_gemini.grok_client import (
     DEFAULT_MODEL,
     DEFAULT_MODELS,
+    DEFAULT_TEXT_MODELS,
     USER_AGENT,
     _MODEL_LIST_CACHE,
     _build_headers,
     _build_image_request,
+    _build_text_messages,
+    _extract_chat_text,
+    generate_content,
+    generate_sync,
     generate_images_sync,
+    generate_text_sync,
     list_models_sync,
 )
 from better_gemini.grok_core import BetterGrokError, BetterGrokRequest
@@ -22,6 +28,7 @@ class GrokClientTests(unittest.TestCase):
 
     def test_default_model_is_in_bundled_default_models(self):
         self.assertIn(DEFAULT_MODEL, DEFAULT_MODELS)
+        self.assertTrue(set(DEFAULT_TEXT_MODELS).issubset(DEFAULT_MODELS))
 
     def test_build_headers_sets_explicit_user_agent(self):
         headers = _build_headers(api_key="k", has_payload=True)
@@ -34,15 +41,40 @@ class GrokClientTests(unittest.TestCase):
     def test_list_models_sync_parses_ids_and_aliases(self):
         with mock.patch(
             "better_gemini.grok_client._request_json",
-            return_value={
-                "models": [
-                    {"id": "grok-imagine-image-pro", "aliases": ["grok-imagine-image"]},
-                    {"id": "custom-image-model", "aliases": []},
-                ]
-            },
+            side_effect=[
+                {
+                    "models": [
+                        {"id": "grok-imagine-image-pro", "aliases": ["grok-imagine-image"]},
+                        {"id": "custom-image-model", "aliases": []},
+                    ]
+                },
+                {
+                    "models": [
+                        {"id": "grok-4", "aliases": ["grok-4-fast"]},
+                    ]
+                },
+            ],
         ):
             models = list_models_sync(api_key="k", cache_ttl_s=0)
-        self.assertEqual(models, ["custom-image-model", "grok-imagine-image", "grok-imagine-image-pro"])
+        self.assertEqual(
+            models,
+            [
+                "custom-image-model",
+                "grok-4",
+                "grok-4-fast",
+                "grok-imagine-image",
+                "grok-imagine-image-pro",
+            ],
+        )
+
+    def test_list_models_sync_can_limit_to_language_models(self):
+        with mock.patch(
+            "better_gemini.grok_client._request_json",
+            return_value={"models": [{"id": "grok-4"}, {"id": "grok-3-mini"}]},
+        ) as request_json:
+            models = list_models_sync(api_key="k", model_type="language", cache_ttl_s=0)
+        self.assertEqual(models, ["grok-3-mini", "grok-4"])
+        request_json.assert_called_once_with(method="GET", path="/language-models", api_key="k")
 
     def test_list_models_sync_requires_api_key(self):
         prior_key = os.environ.pop("XAI_API_KEY", None)
@@ -52,6 +84,10 @@ class GrokClientTests(unittest.TestCase):
         finally:
             if prior_key is not None:
                 os.environ["XAI_API_KEY"] = prior_key
+
+    def test_list_models_sync_rejects_unknown_model_type(self):
+        with self.assertRaises(BetterGrokError):
+            list_models_sync(api_key="k", model_type="audio", cache_ttl_s=0)
 
     def test_build_image_request_for_generation(self):
         path, payload, mode = _build_image_request(
@@ -104,6 +140,30 @@ class GrokClientTests(unittest.TestCase):
         self.assertEqual(len(payload["images"]), 2)
         self.assertNotIn("image", payload)
 
+    def test_build_text_messages_without_images_uses_string_content(self):
+        messages = _build_text_messages(
+            BetterGrokRequest(
+                model="grok-4",
+                prompt="Explain this.",
+                response_modalities=("TEXT",),
+            )
+        )
+        self.assertEqual(messages, [{"role": "user", "content": "Explain this."}])
+
+    def test_build_text_messages_with_images_uses_openai_style_content_parts(self):
+        messages = _build_text_messages(
+            BetterGrokRequest(
+                model="grok-4",
+                prompt="What's in this image?",
+                response_modalities=("TEXT",),
+                input_images=(b"png-bytes",),
+            )
+        )
+        self.assertEqual(messages[0]["role"], "user")
+        self.assertEqual(messages[0]["content"][0], {"type": "text", "text": "What's in this image?"})
+        self.assertEqual(messages[0]["content"][1]["type"], "image_url")
+        self.assertTrue(messages[0]["content"][1]["image_url"]["url"].startswith("data:image/png;base64,"))
+
     def test_generate_images_sync_decodes_base64_images(self):
         image_bytes = b"fake-image-bytes"
         b64 = base64.b64encode(image_bytes).decode("utf-8")
@@ -132,6 +192,74 @@ class GrokClientTests(unittest.TestCase):
             )
         self.assertEqual(images, [])
         self.assertIn("returned no images", text)
+
+    def test_extract_chat_text_supports_string_content(self):
+        model, text = _extract_chat_text(
+            {
+                "model": "grok-4",
+                "choices": [{"message": {"content": "Hello world"}}],
+            }
+        )
+        self.assertEqual(model, "grok-4")
+        self.assertEqual(text, "Hello world")
+
+    def test_extract_chat_text_supports_structured_content(self):
+        model, text = _extract_chat_text(
+            {
+                "model": "grok-4",
+                "choices": [
+                    {
+                        "message": {
+                            "content": [
+                                {"type": "text", "text": "First"},
+                                {"type": "output_text", "text": "Ignored"},
+                                {"type": "text", "text": "Second"},
+                            ]
+                        }
+                    }
+                ],
+            }
+        )
+        self.assertEqual(model, "grok-4")
+        self.assertEqual(text, "First\n\nSecond")
+
+    def test_generate_text_sync_returns_chat_completion_text(self):
+        with mock.patch(
+            "better_gemini.grok_client._request_json",
+            return_value={
+                "model": "grok-4",
+                "choices": [{"message": {"content": "Answer text"}}],
+            },
+        ):
+            text, images = generate_text_sync(
+                api_key="k",
+                request=BetterGrokRequest(model="grok-4", prompt="Explain", response_modalities=("TEXT",)),
+            )
+        self.assertEqual(text, "Answer text")
+        self.assertEqual(images, [])
+
+    def test_generate_sync_routes_text_only_requests_to_chat_completions(self):
+        with mock.patch("better_gemini.grok_client.generate_text_sync", return_value=("Answer text", [])) as text_sync:
+            text, images = generate_sync(
+                api_key="k",
+                request=BetterGrokRequest(model="grok-4", prompt="Explain", response_modalities=("TEXT",)),
+            )
+        self.assertEqual((text, images), ("Answer text", []))
+        text_sync.assert_called_once()
+
+    def test_generate_content_async_routes_text_only_requests(self):
+        async def run_test():
+            with mock.patch("better_gemini.grok_client.generate_sync", return_value=("Answer text", [])) as generate:
+                result = await generate_content(
+                    api_key="k",
+                    request=BetterGrokRequest(model="grok-4", prompt="Explain", response_modalities=("TEXT",)),
+                )
+            self.assertEqual(result, ("Answer text", []))
+            generate.assert_called_once()
+
+        import asyncio
+
+        asyncio.run(run_test())
 
 
 if __name__ == "__main__":

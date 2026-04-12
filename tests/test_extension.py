@@ -74,6 +74,8 @@ class ExtensionTests(unittest.TestCase):
             return_value=[
                 "grok-imagine-image-ultra",
                 "grok-imagine-image",
+                "grok-4",
+                "grok-5-experimental",
             ],
         ):
             options = extension._grok_model_dropdown_options()
@@ -82,8 +84,13 @@ class ExtensionTests(unittest.TestCase):
             [
                 "grok-imagine-image",
                 "grok-imagine-image-pro",
+                "grok-4",
+                "grok-4-fast-non-reasoning",
+                "grok-3-mini",
+                "grok-code-fast-1",
                 "grok-imagine-image-ultra",
-            ],
+                "grok-5-experimental",
+            ]
         )
 
 

@@ -4,6 +4,20 @@ from better_gemini.grok_core import BetterGrokConfigError, MAX_EDIT_IMAGES, buil
 
 
 class GrokCoreTests(unittest.TestCase):
+    def test_build_request_accepts_text_only_modality(self):
+        request = build_request(
+            model="grok-4",
+            prompt="test prompt",
+            response_modalities="TEXT",
+            aspect_ratio="16:9",
+            resolution="2K",
+            n=4,
+        )
+        self.assertEqual(request.response_modalities, ("TEXT",))
+        self.assertIsNone(request.aspect_ratio)
+        self.assertIsNone(request.resolution)
+        self.assertEqual(request.n, 1)
+
     def test_build_request_normalizes_resolution(self):
         request = build_request(
             model="grok-imagine-image",
@@ -26,6 +40,14 @@ class GrokCoreTests(unittest.TestCase):
                 model="grok-imagine-image",
                 prompt="test prompt",
                 n=11,
+            )
+
+    def test_build_request_rejects_unknown_modality(self):
+        with self.assertRaises(BetterGrokConfigError):
+            build_request(
+                model="grok-imagine-image",
+                prompt="test prompt",
+                response_modalities="AUDIO",
             )
 
     def test_build_request_accepts_byte_like_images(self):
