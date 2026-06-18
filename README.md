@@ -24,13 +24,13 @@ This repo provides two nodes:
 
 ### Better Gemini
 
-- Inputs: prompt, model, `response_modalities` (`IMAGE`, `IMAGE+TEXT`, `TEXT`), optional prompt images, aspect ratio, resolution or width+height, temperature, top_p, top_k, max tokens, thinking controls, seed
+- Inputs: prompt, model, `response_modalities` (`IMAGE`, `IMAGE+TEXT`, `TEXT`), optional prompt images, aspect ratio, resolution or width+height, temperature, top_p, top_k, max tokens, thinking controls, seed, optional output caching
 - Outputs: `IMAGE`, `STRING`
 - Use it when you want one node that can handle both Gemini image models and Gemini text-only models
 
 ### Better Grok
 
-- Inputs: prompt, model, `response_modalities` (`IMAGE`, `IMAGE+TEXT`, `TEXT`), reasoning effort (`none`, `low`, `medium`, `high`), optional prompt images, aspect ratio, resolution, `n`
+- Inputs: prompt, model, `response_modalities` (`IMAGE`, `IMAGE+TEXT`, `TEXT`), reasoning effort (`none`, `low`, `medium`, `high`), optional prompt images, aspect ratio, resolution, `n`, optional output caching
 - Outputs: `IMAGE`, `STRING`
 - Use it when you want Grok image generation, image editing, or a text-only Grok call from the same node
 
@@ -40,6 +40,7 @@ This repo provides two nodes:
 - In `TEXT` mode, the `IMAGE` output is a minimal blank `1x1` tensor so ComfyUI graphs can stay connected without allocating a large placeholder.
 - In `IMAGE+TEXT` mode, image generation still runs and any returned notes or revised prompt text are placed in `STRING`.
 - If Gemini or Grok returns no images when image output was requested, the node emits a blank placeholder image and includes a note in `STRING`.
+- If `cache_outputs` is enabled, model outputs are stored under `.cache/` and identical future requests reuse the cached `IMAGE`/`STRING` outputs without calling Gemini or Grok.
 
 ## Model Dropdowns
 
@@ -71,6 +72,7 @@ Recommended text-only examples:
 - The Grok HTTP client sends an explicit application `User-Agent` because `api.x.ai` can reject the default `Python-urllib` signature with Cloudflare 1010.
 - Grok image edits use xAI's JSON-based `/v1/images/edits` API and send ComfyUI `IMAGE` inputs as PNG data URIs. Multiple prompt images are supported for edit and merge workflows.
 - Grok `TEXT` mode uses xAI's `/v1/responses` endpoint with configurable reasoning effort. If prompt images are attached, the node sends them as response image inputs and returns the model's text through `STRING`.
+- Output caching uses the SHA-256 checksum of canonical Gemini or Grok request data as the manifest filename, with string and image payloads stored as separate content-addressed files.
 - `resolution` and `aspect_ratio` are best-effort, model-dependent settings. The node logs a warning if the returned size does not match the request.
 
 ## Dev

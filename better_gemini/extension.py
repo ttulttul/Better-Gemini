@@ -22,6 +22,7 @@ from .grok_client import (
     list_models_sync as list_grok_models_sync,
 )
 from .grok_core import BetterGrokConfigError, build_request as build_grok_request
+from .output_cache import load_cached_output, request_cache_key, store_cached_output
 
 logger = logging.getLogger(__name__)
 _warned_gemini_model_listing = False
@@ -203,6 +204,27 @@ def _comfy_image_to_png_bytes(prompt_images: Any) -> list[bytes]:
     return pngs
 
 
+async def _get_or_generate_output(
+    *,
+    cache_outputs: bool,
+    provider: str,
+    request: Any,
+    extra_cache_data: dict[str, Any] | None,
+    generate_fn: Any,
+) -> tuple[str, list[bytes]]:
+    if not cache_outputs:
+        return await generate_fn()
+
+    cache_key = request_cache_key(provider=provider, request=request, extra=extra_cache_data)
+    cached = load_cached_output(cache_key)
+    if cached is not None:
+        return cached
+
+    text, images = await generate_fn()
+    store_cached_output(cache_key, text=text, images=images)
+    return text, images
+
+
 try:
     from comfy_api.latest import IO, ComfyExtension  # type: ignore
     from typing_extensions import override
@@ -370,6 +392,12 @@ if IO is not None:
                         optional=True,
                         tooltip="Optional system prompt. If set, it will be prepended to your prompt.",
                     ),
+                    IO.Boolean.Input(
+                        "cache_outputs",
+                        default=False,
+                        optional=True,
+                        tooltip="Cache model outputs under .cache and reuse them for identical Gemini requests.",
+                    ),
                 ],
                 outputs=[
                     IO.Image.Output(),
@@ -397,6 +425,7 @@ if IO is not None:
             thinking_budget: int = 0,
             seed: int = 0,
             system_prompt: str = "",
+            cache_outputs: bool = False,
         ) -> Any:
             try:
                 prompt_image_bytes = _comfy_image_to_png_bytes(prompt_images)
@@ -420,10 +449,16 @@ if IO is not None:
             except BetterGeminiConfigError as e:
                 raise ValueError(str(e)) from e
 
-            text, images = await generate_gemini_image(
-                api_key=(api_key.strip() or None),
+            text, images = await _get_or_generate_output(
+                cache_outputs=cache_outputs,
+                provider="gemini",
                 request=request,
-                system_prompt=system_prompt or "",
+                extra_cache_data={"system_prompt": system_prompt or ""},
+                generate_fn=lambda: generate_gemini_image(
+                    api_key=(api_key.strip() or None),
+                    request=request,
+                    system_prompt=system_prompt or "",
+                ),
             )
             image_tensor = _bytes_list_to_comfy_image(
                 images,
@@ -521,6 +556,12 @@ if IO is not None:
                         tooltip="Number of output images to request. xAI documents a maximum of 10 images per request.",
                         optional=True,
                     ),
+                    IO.Boolean.Input(
+                        "cache_outputs",
+                        default=False,
+                        optional=True,
+                        tooltip="Cache model outputs under .cache and reuse them for identical Grok requests.",
+                    ),
                 ],
                 outputs=[
                     IO.Image.Output(),
@@ -540,6 +581,7 @@ if IO is not None:
             aspect_ratio: str = "auto",
             resolution: str = "auto",
             n: int = 1,
+            cache_outputs: bool = False,
         ) -> Any:
             try:
                 prompt_image_bytes = _comfy_image_to_png_bytes(prompt_images)
@@ -556,9 +598,15 @@ if IO is not None:
             except BetterGrokConfigError as e:
                 raise ValueError(str(e)) from e
 
-            text, images = await generate_grok_content(
-                api_key=(api_key.strip() or None),
+            text, images = await _get_or_generate_output(
+                cache_outputs=cache_outputs,
+                provider="grok",
                 request=request,
+                extra_cache_data=None,
+                generate_fn=lambda: generate_grok_content(
+                    api_key=(api_key.strip() or None),
+                    request=request,
+                ),
             )
             image_tensor = _bytes_list_to_comfy_image(
                 images,

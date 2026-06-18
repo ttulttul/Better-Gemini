@@ -96,5 +96,67 @@ class ExtensionTests(unittest.TestCase):
         )
 
 
+class ExtensionCacheTests(unittest.IsolatedAsyncioTestCase):
+    async def test_get_or_generate_output_returns_cached_output_without_calling_provider(self):
+        request = object()
+
+        async def fail_generate():
+            raise AssertionError("provider should not be called")
+
+        with mock.patch.object(extension, "request_cache_key", return_value="cache-key"), mock.patch.object(
+            extension, "load_cached_output", return_value=("cached text", [b"cached image"])
+        ) as load_cached, mock.patch.object(extension, "store_cached_output") as store_cached:
+            text, images = await extension._get_or_generate_output(
+                cache_outputs=True,
+                provider="grok",
+                request=request,
+                extra_cache_data=None,
+                generate_fn=fail_generate,
+            )
+
+        self.assertEqual((text, images), ("cached text", [b"cached image"]))
+        load_cached.assert_called_once_with("cache-key")
+        store_cached.assert_not_called()
+
+    async def test_get_or_generate_output_stores_cache_miss_result(self):
+        request = object()
+
+        async def generate():
+            return "fresh text", [b"fresh image"]
+
+        with mock.patch.object(extension, "request_cache_key", return_value="cache-key"), mock.patch.object(
+            extension, "load_cached_output", return_value=None
+        ), mock.patch.object(extension, "store_cached_output") as store_cached:
+            text, images = await extension._get_or_generate_output(
+                cache_outputs=True,
+                provider="gemini",
+                request=request,
+                extra_cache_data={"system_prompt": "sys"},
+                generate_fn=generate,
+            )
+
+        self.assertEqual((text, images), ("fresh text", [b"fresh image"]))
+        store_cached.assert_called_once_with("cache-key", text="fresh text", images=[b"fresh image"])
+
+    async def test_get_or_generate_output_bypasses_cache_when_disabled(self):
+        async def generate():
+            return "fresh text", []
+
+        with mock.patch.object(extension, "load_cached_output") as load_cached, mock.patch.object(
+            extension, "store_cached_output"
+        ) as store_cached:
+            text, images = await extension._get_or_generate_output(
+                cache_outputs=False,
+                provider="gemini",
+                request=object(),
+                extra_cache_data=None,
+                generate_fn=generate,
+            )
+
+        self.assertEqual((text, images), ("fresh text", []))
+        load_cached.assert_not_called()
+        store_cached.assert_not_called()
+
+
 if __name__ == "__main__":
     unittest.main()
