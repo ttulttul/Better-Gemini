@@ -9,11 +9,13 @@ class GrokCoreTests(unittest.TestCase):
             model="grok-4",
             prompt="test prompt",
             response_modalities="TEXT",
+            reasoning_effort="High",
             aspect_ratio="16:9",
             resolution="2K",
             n=4,
         )
         self.assertEqual(request.response_modalities, ("TEXT",))
+        self.assertEqual(request.reasoning_effort, "high")
         self.assertIsNone(request.aspect_ratio)
         self.assertIsNone(request.resolution)
         self.assertEqual(request.n, 1)
@@ -48,6 +50,15 @@ class GrokCoreTests(unittest.TestCase):
                 model="grok-imagine-image",
                 prompt="test prompt",
                 response_modalities="AUDIO",
+            )
+
+    def test_build_request_rejects_unknown_reasoning_effort(self):
+        with self.assertRaises(BetterGrokConfigError):
+            build_request(
+                model="grok-4",
+                prompt="test prompt",
+                response_modalities="TEXT",
+                reasoning_effort="maximum",
             )
 
     def test_build_request_accepts_byte_like_images(self):

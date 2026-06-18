@@ -11,8 +11,10 @@ from better_gemini.grok_client import (
     _MODEL_LIST_CACHE,
     _build_headers,
     _build_image_request,
-    _build_text_messages,
+    _build_text_input,
+    _build_text_request,
     _extract_chat_text,
+    _extract_responses_text,
     generate_content,
     generate_sync,
     generate_images_sync,
@@ -141,7 +143,7 @@ class GrokClientTests(unittest.TestCase):
         self.assertNotIn("image", payload)
 
     def test_build_text_messages_without_images_uses_string_content(self):
-        messages = _build_text_messages(
+        messages = _build_text_input(
             BetterGrokRequest(
                 model="grok-4",
                 prompt="Explain this.",
@@ -151,7 +153,7 @@ class GrokClientTests(unittest.TestCase):
         self.assertEqual(messages, [{"role": "user", "content": "Explain this."}])
 
     def test_build_text_messages_with_images_uses_openai_style_content_parts(self):
-        messages = _build_text_messages(
+        messages = _build_text_input(
             BetterGrokRequest(
                 model="grok-4",
                 prompt="What's in this image?",
@@ -160,9 +162,27 @@ class GrokClientTests(unittest.TestCase):
             )
         )
         self.assertEqual(messages[0]["role"], "user")
-        self.assertEqual(messages[0]["content"][0], {"type": "text", "text": "What's in this image?"})
-        self.assertEqual(messages[0]["content"][1]["type"], "image_url")
-        self.assertTrue(messages[0]["content"][1]["image_url"]["url"].startswith("data:image/png;base64,"))
+        self.assertEqual(messages[0]["content"][0], {"type": "input_text", "text": "What's in this image?"})
+        self.assertEqual(messages[0]["content"][1]["type"], "input_image")
+        self.assertTrue(messages[0]["content"][1]["image_url"].startswith("data:image/png;base64,"))
+
+    def test_build_text_request_includes_reasoning_effort(self):
+        payload = _build_text_request(
+            BetterGrokRequest(
+                model="grok-latest",
+                prompt="Explain this.",
+                response_modalities=("TEXT",),
+                reasoning_effort="low",
+            )
+        )
+        self.assertEqual(
+            payload,
+            {
+                "model": "grok-latest",
+                "reasoning": {"effort": "low"},
+                "input": [{"role": "user", "content": "Explain this."}],
+            },
+        )
 
     def test_generate_images_sync_decodes_base64_images(self):
         image_bytes = b"fake-image-bytes"
@@ -193,29 +213,27 @@ class GrokClientTests(unittest.TestCase):
         self.assertEqual(images, [])
         self.assertIn("returned no images", text)
 
-    def test_extract_chat_text_supports_string_content(self):
-        model, text = _extract_chat_text(
+    def test_extract_responses_text_supports_output_text_field(self):
+        model, text = _extract_responses_text(
             {
                 "model": "grok-4",
-                "choices": [{"message": {"content": "Hello world"}}],
+                "output_text": "Hello world",
             }
         )
         self.assertEqual(model, "grok-4")
         self.assertEqual(text, "Hello world")
 
-    def test_extract_chat_text_supports_structured_content(self):
-        model, text = _extract_chat_text(
+    def test_extract_responses_text_supports_structured_content(self):
+        model, text = _extract_responses_text(
             {
                 "model": "grok-4",
-                "choices": [
+                "output": [
                     {
-                        "message": {
-                            "content": [
-                                {"type": "text", "text": "First"},
-                                {"type": "output_text", "text": "Ignored"},
-                                {"type": "text", "text": "Second"},
-                            ]
-                        }
+                        "type": "message",
+                        "content": [
+                            {"type": "output_text", "text": "First"},
+                            {"type": "text", "text": "Second"},
+                        ],
                     }
                 ],
             }
@@ -223,22 +241,41 @@ class GrokClientTests(unittest.TestCase):
         self.assertEqual(model, "grok-4")
         self.assertEqual(text, "First\n\nSecond")
 
-    def test_generate_text_sync_returns_chat_completion_text(self):
+    def test_extract_chat_text_alias_uses_responses_extractor(self):
+        model, text = _extract_chat_text({"model": "grok-4", "output_text": "Hello"})
+        self.assertEqual((model, text), ("grok-4", "Hello"))
+
+    def test_generate_text_sync_returns_responses_text(self):
         with mock.patch(
             "better_gemini.grok_client._request_json",
             return_value={
                 "model": "grok-4",
-                "choices": [{"message": {"content": "Answer text"}}],
+                "output_text": "Answer text",
             },
-        ):
+        ) as request_json:
             text, images = generate_text_sync(
                 api_key="k",
-                request=BetterGrokRequest(model="grok-4", prompt="Explain", response_modalities=("TEXT",)),
+                request=BetterGrokRequest(
+                    model="grok-4",
+                    prompt="Explain",
+                    response_modalities=("TEXT",),
+                    reasoning_effort="medium",
+                ),
             )
         self.assertEqual(text, "Answer text")
         self.assertEqual(images, [])
+        request_json.assert_called_once_with(
+            method="POST",
+            path="/responses",
+            api_key="k",
+            payload={
+                "model": "grok-4",
+                "reasoning": {"effort": "medium"},
+                "input": [{"role": "user", "content": "Explain"}],
+            },
+        )
 
-    def test_generate_sync_routes_text_only_requests_to_chat_completions(self):
+    def test_generate_sync_routes_text_only_requests_to_responses(self):
         with mock.patch("better_gemini.grok_client.generate_text_sync", return_value=("Answer text", [])) as text_sync:
             text, images = generate_sync(
                 api_key="k",

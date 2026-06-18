@@ -41,6 +41,7 @@ SUPPORTED_IMAGE_RESOLUTIONS: tuple[str, ...] = (
 MAX_EDIT_IMAGES = 5
 MAX_IMAGES_PER_REQUEST = 10
 SUPPORTED_RESPONSE_MODALITIES: frozenset[str] = frozenset({"IMAGE", "TEXT"})
+SUPPORTED_REASONING_EFFORTS: frozenset[str] = frozenset({"none", "low", "medium", "high"})
 
 
 @dataclass(frozen=True)
@@ -48,6 +49,7 @@ class BetterGrokRequest:
     model: str
     prompt: str
     response_modalities: tuple[str, ...] = ("IMAGE",)
+    reasoning_effort: str = "none"
     aspect_ratio: str | None = None
     resolution: str | None = None
     n: int = 1
@@ -59,6 +61,7 @@ def build_request(
     model: str,
     prompt: str,
     response_modalities: str = "IMAGE",
+    reasoning_effort: str = "none",
     aspect_ratio: str = "auto",
     resolution: str = "auto",
     n: int = 1,
@@ -79,6 +82,10 @@ def build_request(
                 ", ".join(repr(modality) for modality in unsupported_modalities)
             )
         )
+
+    resolved_reasoning_effort = (reasoning_effort or "none").strip().lower()
+    if resolved_reasoning_effort not in SUPPORTED_REASONING_EFFORTS:
+        raise BetterGrokConfigError(f"Unsupported reasoning effort: {resolved_reasoning_effort!r}")
 
     resolved_aspect_ratio = (aspect_ratio or "auto").strip()
     if resolved_aspect_ratio not in SUPPORTED_ASPECT_RATIOS:
@@ -118,6 +125,7 @@ def build_request(
         model=model.strip(),
         prompt=prompt,
         response_modalities=modalities,
+        reasoning_effort=resolved_reasoning_effort,
         aspect_ratio=resolved_aspect_ratio if image_requested and resolved_aspect_ratio != "auto" else None,
         resolution=resolved_resolution if image_requested and resolved_resolution != "auto" else None,
         n=n if image_requested else 1,

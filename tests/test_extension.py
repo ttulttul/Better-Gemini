@@ -84,6 +84,8 @@ class ExtensionTests(unittest.TestCase):
             [
                 "grok-imagine-image",
                 "grok-imagine-image-pro",
+                "grok-imagine-image-quality",
+                "grok-latest",
                 "grok-4",
                 "grok-4-fast-non-reasoning",
                 "grok-3-mini",

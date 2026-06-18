@@ -21,8 +21,10 @@ DEFAULT_MODEL = "grok-imagine-image"
 DEFAULT_IMAGE_MODELS = [
     "grok-imagine-image",
     "grok-imagine-image-pro",
+    "grok-imagine-image-quality",
 ]
 DEFAULT_TEXT_MODELS = [
+    "grok-latest",
     "grok-4",
     "grok-4-fast-non-reasoning",
     "grok-3-mini",
@@ -223,21 +225,27 @@ def _build_image_request(request: BetterGrokRequest) -> tuple[str, dict[str, Any
     return "/images/generations", payload, "generation"
 
 
-def _build_text_messages(request: BetterGrokRequest) -> list[dict[str, Any]]:
+def _build_text_input(request: BetterGrokRequest) -> list[dict[str, Any]]:
     if not request.input_images:
         return [{"role": "user", "content": request.prompt}]
 
-    content: list[dict[str, Any]] = [{"type": "text", "text": request.prompt}]
+    content: list[dict[str, Any]] = [{"type": "input_text", "text": request.prompt}]
     for image in request.input_images:
         content.append(
             {
-                "type": "image_url",
-                "image_url": {
-                    "url": _data_uri_from_bytes(image),
-                },
+                "type": "input_image",
+                "image_url": _data_uri_from_bytes(image),
             }
         )
     return [{"role": "user", "content": content}]
+
+
+def _build_text_request(request: BetterGrokRequest) -> dict[str, Any]:
+    return {
+        "model": request.model,
+        "reasoning": {"effort": request.reasoning_effort},
+        "input": _build_text_input(request),
+    }
 
 
 def _extract_text_content(content: Any) -> str:
@@ -250,14 +258,14 @@ def _extract_text_content(content: Any) -> str:
     for item in content:
         if not isinstance(item, dict):
             continue
-        if item.get("type") == "text":
+        if item.get("type") in {"text", "output_text"}:
             text = item.get("text")
             if isinstance(text, str) and text.strip():
                 texts.append(text.strip())
     return "\n\n".join(texts).strip()
 
 
-def _extract_chat_text(response: Any) -> tuple[str, str]:
+def _extract_responses_text(response: Any) -> tuple[str, str]:
     if not isinstance(response, dict):
         return "", ""
 
@@ -265,20 +273,34 @@ def _extract_chat_text(response: Any) -> tuple[str, str]:
     if not isinstance(model_used, str) or not model_used.strip():
         model_used = ""
 
-    choices = response.get("choices")
-    if not isinstance(choices, list):
+    output_text = response.get("output_text")
+    if isinstance(output_text, str) and output_text.strip():
+        return model_used, output_text.strip()
+
+    output = response.get("output")
+    if not isinstance(output, list):
         return model_used, ""
 
-    for choice in choices:
-        if not isinstance(choice, dict):
+    texts: list[str] = []
+    for item in output:
+        if not isinstance(item, dict):
             continue
-        message = choice.get("message")
-        if not isinstance(message, dict):
+        item_type = item.get("type")
+        if item_type == "output_text":
+            text = item.get("text")
+            if isinstance(text, str) and text.strip():
+                texts.append(text.strip())
             continue
-        text = _extract_text_content(message.get("content"))
+        if item_type not in {"message", "assistant_message"}:
+            continue
+        text = _extract_text_content(item.get("content"))
         if text:
-            return model_used, text
-    return model_used, ""
+            texts.append(text)
+    return model_used, "\n\n".join(texts).strip()
+
+
+def _extract_chat_text(response: Any) -> tuple[str, str]:
+    return _extract_responses_text(response)
 
 
 def _decode_b64_json(item: Any) -> bytes | None:
@@ -344,17 +366,15 @@ def generate_text_sync(*, api_key: str | None, request: BetterGrokRequest) -> tu
     if not resolved_api_key:
         raise BetterGrokError("No API key provided. Set `XAI_API_KEY` or pass `api_key`.")
 
-    payload = {
-        "model": request.model,
-        "messages": _build_text_messages(request),
-    }
+    payload = _build_text_request(request)
     logger.info(
-        "Calling xAI chat completions API with model=%s prompt_images=%d",
+        "Calling xAI responses API with model=%s reasoning_effort=%s prompt_images=%d",
         request.model,
+        request.reasoning_effort,
         len(request.input_images),
     )
-    response = _request_json(method="POST", path="/chat/completions", api_key=resolved_api_key, payload=payload)
-    model_used, text = _extract_chat_text(response)
+    response = _request_json(method="POST", path="/responses", api_key=resolved_api_key, payload=payload)
+    model_used, text = _extract_responses_text(response)
     if text:
         return text, []
 

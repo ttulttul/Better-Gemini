@@ -15,5 +15,5 @@
 - `api.x.ai` may reject the default `Python-urllib` user-agent with Cloudflare error 1010; set an explicit application `User-Agent` header in direct HTTP clients instead of relying on urllib defaults.
 - xAI exposes `/v1/image-generation-models`, which is a better source for the Grok model dropdown than the generic `/v1/models` endpoint because it already scopes results to image-capable models.
 - xAI also exposes `/v1/language-models`; merging it with `/v1/image-generation-models` lets one Grok node support both image generation and text-only chat models from the same dropdown.
-- Grok text-only mode fits the same ComfyUI node if it routes to `/v1/chat/completions`, returns text through `STRING`, and emits a minimal 1x1 placeholder tensor on the `IMAGE` output so text-only graphs still satisfy ComfyUI’s type expectations.
+- Grok text-only mode fits the same ComfyUI node if it routes to `/v1/responses`, returns text through `STRING`, exposes `reasoning.effort`, and emits a minimal 1x1 placeholder tensor on the `IMAGE` output so text-only graphs still satisfy ComfyUI’s type expectations.
 - Converting to `uv` project workflows works best by declaring dependencies in `pyproject.toml` and using `uv sync` / `uv run` as the default install+test path.

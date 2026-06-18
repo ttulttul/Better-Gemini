@@ -30,7 +30,7 @@ This repo provides two nodes:
 
 ### Better Grok
 
-- Inputs: prompt, model, `response_modalities` (`IMAGE`, `IMAGE+TEXT`, `TEXT`), optional prompt images, aspect ratio, resolution, `n`
+- Inputs: prompt, model, `response_modalities` (`IMAGE`, `IMAGE+TEXT`, `TEXT`), reasoning effort (`none`, `low`, `medium`, `high`), optional prompt images, aspect ratio, resolution, `n`
 - Outputs: `IMAGE`, `STRING`
 - Use it when you want Grok image generation, image editing, or a text-only Grok call from the same node
 
@@ -50,12 +50,12 @@ This repo provides two nodes:
 Bundled fallback models:
 
 - Gemini: `gemini-3-flash-preview`, `gemini-3.1-flash-image-preview`, `gemini-3.1-flash-lite-preview`, `gemini-3-pro-image-preview`, `gemini-3.1-pro-preview`, `imagen-4.0-generate-001`, `imagen-4.0-ultra-generate-001`
-- Grok: `grok-imagine-image`, `grok-imagine-image-pro`, `grok-4`, `grok-4-fast-non-reasoning`, `grok-3-mini`, `grok-code-fast-1`
+- Grok: `grok-imagine-image`, `grok-imagine-image-pro`, `grok-imagine-image-quality`, `grok-latest`, `grok-4`, `grok-4-fast-non-reasoning`, `grok-3-mini`, `grok-code-fast-1`
 
 Recommended text-only examples:
 
 - Gemini: `gemini-3-flash-preview`, `gemini-3.1-flash-lite-preview`, `gemini-3.1-pro-preview`
-- Grok: `grok-4`, `grok-4-fast-non-reasoning`, `grok-3-mini`, `grok-code-fast-1`
+- Grok: `grok-latest`, `grok-4`, `grok-4-fast-non-reasoning`, `grok-3-mini`, `grok-code-fast-1`
 
 ## Example Workflow
 
@@ -70,7 +70,7 @@ Recommended text-only examples:
 - Grok image generation is wired against xAI's documented image endpoints and requests `response_format="b64_json"`, so the node can return image tensors directly instead of downloading temporary URLs.
 - The Grok HTTP client sends an explicit application `User-Agent` because `api.x.ai` can reject the default `Python-urllib` signature with Cloudflare 1010.
 - Grok image edits use xAI's JSON-based `/v1/images/edits` API and send ComfyUI `IMAGE` inputs as PNG data URIs. Multiple prompt images are supported for edit and merge workflows.
-- Grok `TEXT` mode uses xAI's legacy-but-documented `/v1/chat/completions` endpoint. If prompt images are attached, the node sends them as chat image inputs and returns the model's text through `STRING`.
+- Grok `TEXT` mode uses xAI's `/v1/responses` endpoint with configurable reasoning effort. If prompt images are attached, the node sends them as response image inputs and returns the model's text through `STRING`.
 - `resolution` and `aspect_ratio` are best-effort, model-dependent settings. The node logs a warning if the returned size does not match the request.
 
 ## Dev
