@@ -16,5 +16,6 @@
 - xAI exposes `/v1/image-generation-models`, which is a better source for the Grok model dropdown than the generic `/v1/models` endpoint because it already scopes results to image-capable models.
 - xAI also exposes `/v1/language-models`; merging it with `/v1/image-generation-models` lets one Grok node support both image generation and text-only chat models from the same dropdown.
 - Grok text-only mode fits the same ComfyUI node if it routes to `/v1/responses`, returns text through `STRING`, exposes `reasoning.effort`, and emits a minimal 1x1 placeholder tensor on the `IMAGE` output so text-only graphs still satisfy ComfyUI’s type expectations.
+- xAI `/v1/responses` can reject large outputs unless storage is disabled; send `store=false` for BetterGrok text calls because the node does not reuse xAI-hosted response sessions.
 - Provider output caching should hash canonical request data, not API keys, so cached Gemini and Grok results can skip network calls for identical prompts/settings while keeping credentials out of cache filenames and manifests.
 - Converting to `uv` project workflows works best by declaring dependencies in `pyproject.toml` and using `uv sync` / `uv run` as the default install+test path.

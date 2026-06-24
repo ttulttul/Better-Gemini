@@ -179,6 +179,7 @@ class GrokClientTests(unittest.TestCase):
             payload,
             {
                 "model": "grok-latest",
+                "store": False,
                 "reasoning": {"effort": "low"},
                 "input": [{"role": "user", "content": "Explain this."}],
             },
@@ -270,6 +271,7 @@ class GrokClientTests(unittest.TestCase):
             api_key="k",
             payload={
                 "model": "grok-4",
+                "store": False,
                 "reasoning": {"effort": "medium"},
                 "input": [{"role": "user", "content": "Explain"}],
             },

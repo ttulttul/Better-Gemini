@@ -243,6 +243,7 @@ def _build_text_input(request: BetterGrokRequest) -> list[dict[str, Any]]:
 def _build_text_request(request: BetterGrokRequest) -> dict[str, Any]:
     return {
         "model": request.model,
+        "store": False,
         "reasoning": {"effort": request.reasoning_effort},
         "input": _build_text_input(request),
     }

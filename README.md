@@ -71,7 +71,7 @@ Recommended text-only examples:
 - Grok image generation is wired against xAI's documented image endpoints and requests `response_format="b64_json"`, so the node can return image tensors directly instead of downloading temporary URLs.
 - The Grok HTTP client sends an explicit application `User-Agent` because `api.x.ai` can reject the default `Python-urllib` signature with Cloudflare 1010.
 - Grok image edits use xAI's JSON-based `/v1/images/edits` API and send ComfyUI `IMAGE` inputs as PNG data URIs. Multiple prompt images are supported for edit and merge workflows.
-- Grok `TEXT` mode uses xAI's `/v1/responses` endpoint with configurable reasoning effort. If prompt images are attached, the node sends them as response image inputs and returns the model's text through `STRING`.
+- Grok `TEXT` mode uses xAI's `/v1/responses` endpoint with configurable reasoning effort and `store=false`, since node calls are not reused as xAI chat sessions. If prompt images are attached, the node sends them as response image inputs and returns the model's text through `STRING`.
 - Output caching uses the SHA-256 checksum of canonical Gemini or Grok request data as the manifest filename, with string and image payloads stored as separate content-addressed files.
 - `resolution` and `aspect_ratio` are best-effort, model-dependent settings. The node logs a warning if the returned size does not match the request.
 
