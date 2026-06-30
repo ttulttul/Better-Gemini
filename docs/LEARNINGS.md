@@ -10,6 +10,7 @@
 - Not every model that supports `"generateContent"` can output images; if a selected model returns text-only, handle empty-image responses by returning a placeholder image and surfacing a note in the node’s text output.
 - Gemini text-only models fit the same node if `response_modalities` includes `TEXT`; skip `imageConfig` for those requests and emit only a minimal 1x1 placeholder tensor on the `IMAGE` output so ComfyUI graphs stay connected without wasting memory.
 - For better offline/no-key ergonomics, keep a bundled fallback list of common Gemini defaults in the model dropdown, including both image-preview and text-preview models, and merge these defaults into successful `models.list()` responses without duplicates.
+- Keep the Gemini node's selected default in the bundled fallback list first so offline dropdown behavior matches the ComfyUI input default.
 - xAI’s image edit endpoint uses JSON, not multipart form data. Sending ComfyUI images as `data:image/png;base64,...` URLs matches the documented `/v1/images/edits` payload and avoids temporary file hosting.
 - xAI’s image generation endpoints can return temporary URLs or base64; requesting `response_format="b64_json"` is the simplest way to turn Grok responses into ComfyUI `IMAGE` tensors without a second download step.
 - `api.x.ai` may reject the default `Python-urllib` user-agent with Cloudflare error 1010; set an explicit application `User-Agent` header in direct HTTP clients instead of relying on urllib defaults.

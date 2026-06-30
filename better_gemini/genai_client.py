@@ -14,8 +14,9 @@ from .core import BetterGeminiError, BetterGeminiRequest, describe_response_bloc
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_MODEL = "models/gemini-3-pro-image-preview"
+DEFAULT_MODEL = "models/gemini-3.1-flash-lite-image"
 DEFAULT_MODELS = [
+    "models/gemini-3.1-flash-lite-image",
     "models/gemini-3-flash-preview",
     "models/gemini-3.1-flash-image-preview",
     "models/gemini-3.1-flash-lite-preview",

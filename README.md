@@ -50,7 +50,7 @@ This repo provides two nodes:
 
 Bundled fallback models:
 
-- Gemini: `gemini-3-flash-preview`, `gemini-3.1-flash-image-preview`, `gemini-3.1-flash-lite-preview`, `gemini-3-pro-image-preview`, `gemini-3.1-pro-preview`, `imagen-4.0-generate-001`, `imagen-4.0-ultra-generate-001`
+- Gemini: `gemini-3.1-flash-lite-image`, `gemini-3-flash-preview`, `gemini-3.1-flash-image-preview`, `gemini-3.1-flash-lite-preview`, `gemini-3-pro-image-preview`, `gemini-3.1-pro-preview`, `imagen-4.0-generate-001`, `imagen-4.0-ultra-generate-001`
 - Grok: `grok-imagine-image`, `grok-imagine-image-pro`, `grok-imagine-image-quality`, `grok-latest`, `grok-4`, `grok-4-fast-non-reasoning`, `grok-3-mini`, `grok-code-fast-1`
 
 Recommended text-only examples:

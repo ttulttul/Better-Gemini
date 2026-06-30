@@ -34,6 +34,7 @@ class ExtensionTests(unittest.TestCase):
         self.assertEqual(
             options,
             [
+                "models/gemini-3.1-flash-lite-image",
                 "models/gemini-3-flash-preview",
                 "models/gemini-3.1-flash-image-preview",
                 "models/gemini-3.1-flash-lite-preview",
