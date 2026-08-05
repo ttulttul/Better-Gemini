@@ -194,6 +194,7 @@ def max_dim_from_resolution(resolution: str | None) -> int | None:
         return None
     normalized = resolution.strip().upper()
     mapping = {
+        "512": 512,
         "1K": 1024,
         "2K": 2048,
         "4K": 4096,
@@ -213,7 +214,8 @@ def resolution_mismatch_message(
         if actual_width == requested_width and actual_height == requested_height:
             return None
         return (
-            f"Requested size {requested_width}x{requested_height}, but Gemini returned {actual_width}x{actual_height}."
+            f"Requested size {requested_width}x{requested_height}, but the model returned "
+            f"{actual_width}x{actual_height}."
         )
 
     target_max_dim = max_dim_from_resolution(requested_resolution)
@@ -224,7 +226,7 @@ def resolution_mismatch_message(
     if actual_max_dim == target_max_dim:
         return None
     return (
-        f"Requested resolution {requested_resolution} (max dim {target_max_dim}), but Gemini returned "
+        f"Requested resolution {requested_resolution} (max dim {target_max_dim}), but the model returned "
         f"{actual_width}x{actual_height} (max dim {actual_max_dim})."
     )
 

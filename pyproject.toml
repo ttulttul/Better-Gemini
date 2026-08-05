@@ -4,9 +4,9 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "comfyui-better-gemini"
-description = "ComfyUI nodes for Google Gemini and xAI Grok image and text generation with a v3 ComfyUI node interface."
+description = "ComfyUI V3 nodes for Gemini and Grok image/text generation plus OpenRouter image generation."
 dependencies = ["google-genai>=0.5.0"]
-version = "1.2.3"
+version = "1.3.0"
 requires-python = ">=3.9"
 license = "MIT"
 classifiers = [

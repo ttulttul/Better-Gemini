@@ -43,6 +43,7 @@ class CoreTests(unittest.TestCase):
     def test_max_dim_from_resolution(self):
         self.assertIsNone(max_dim_from_resolution(None))
         self.assertIsNone(max_dim_from_resolution("auto"))
+        self.assertEqual(max_dim_from_resolution("512"), 512)
         self.assertEqual(max_dim_from_resolution("1K"), 1024)
         self.assertEqual(max_dim_from_resolution("2K"), 2048)
         self.assertEqual(max_dim_from_resolution("4K"), 4096)

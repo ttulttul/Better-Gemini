@@ -4,12 +4,14 @@ from unittest import mock
 from better_gemini import extension
 from better_gemini.genai_client import DEFAULT_MODELS as GEMINI_DEFAULT_MODELS
 from better_gemini.grok_client import DEFAULT_MODELS as GROK_DEFAULT_MODELS
+from better_gemini.openrouter_client import DEFAULT_MODELS as OPENROUTER_DEFAULT_MODELS
 
 
 class ExtensionTests(unittest.TestCase):
     def setUp(self):
         extension._warned_gemini_model_listing = False
         extension._warned_grok_model_listing = False
+        extension._warned_openrouter_model_listing = False
 
     def test_model_dropdown_options_falls_back_to_bundled_defaults_on_error(self):
         with mock.patch.object(extension, "list_gemini_models_sync", side_effect=RuntimeError("boom")):
@@ -94,6 +96,32 @@ class ExtensionTests(unittest.TestCase):
                 "grok-imagine-image-ultra",
                 "grok-5-experimental",
             ]
+        )
+
+    def test_openrouter_model_dropdown_options_falls_back_to_bundled_defaults_on_error(self):
+        with mock.patch.object(
+            extension,
+            "list_openrouter_models_sync",
+            side_effect=RuntimeError("boom"),
+        ):
+            options = extension._openrouter_model_dropdown_options()
+        self.assertEqual(options, OPENROUTER_DEFAULT_MODELS)
+
+    def test_openrouter_model_dropdown_options_falls_back_to_defaults_on_empty_list(self):
+        with mock.patch.object(extension, "list_openrouter_models_sync", return_value=[]):
+            options = extension._openrouter_model_dropdown_options()
+        self.assertEqual(options, OPENROUTER_DEFAULT_MODELS)
+
+    def test_openrouter_model_dropdown_options_prepends_bundled_defaults(self):
+        with mock.patch.object(
+            extension,
+            "list_openrouter_models_sync",
+            return_value=["custom/image-model", "openai/gpt-image-2"],
+        ):
+            options = extension._openrouter_model_dropdown_options()
+        self.assertEqual(
+            options,
+            [*OPENROUTER_DEFAULT_MODELS, "custom/image-model"],
         )
 
 

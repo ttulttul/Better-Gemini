@@ -22,11 +22,23 @@ from .grok_client import (
     list_models_sync as list_grok_models_sync,
 )
 from .grok_core import BetterGrokConfigError, build_request as build_grok_request
+from .openrouter_client import (
+    DEFAULT_MODEL as OPENROUTER_DEFAULT_MODEL,
+    DEFAULT_MODELS as OPENROUTER_DEFAULT_MODELS,
+    generate_images as generate_openrouter_images,
+    list_models_sync as list_openrouter_models_sync,
+)
+from .openrouter_core import (
+    BetterOpenRouterConfigError,
+    SUPPORTED_ASPECT_RATIOS as OPENROUTER_ASPECT_RATIOS,
+    build_request as build_openrouter_request,
+)
 from .output_cache import load_cached_output, request_cache_key, store_cached_output
 
 logger = logging.getLogger(__name__)
 _warned_gemini_model_listing = False
 _warned_grok_model_listing = False
+_warned_openrouter_model_listing = False
 
 
 def _model_dropdown_options() -> list[str]:
@@ -69,6 +81,35 @@ def _grok_model_dropdown_options() -> list[str]:
         return list(GROK_DEFAULT_MODELS)
 
     return list(dict.fromkeys([*GROK_DEFAULT_MODELS, *models]))
+
+
+def _openrouter_model_dropdown_options() -> list[str]:
+    global _warned_openrouter_model_listing
+    try:
+        models = list_openrouter_models_sync(api_key=None)
+    except Exception as e:
+        if not _warned_openrouter_model_listing:
+            logger.warning(
+                "Unable to list OpenRouter image models for dropdown; falling back to bundled defaults. %s",
+                e,
+            )
+            _warned_openrouter_model_listing = True
+        else:
+            logger.debug(
+                "Unable to list OpenRouter image models for dropdown; using bundled defaults.",
+                exc_info=True,
+            )
+        return list(OPENROUTER_DEFAULT_MODELS)
+
+    if not models:
+        if not _warned_openrouter_model_listing:
+            logger.warning(
+                "OpenRouter image model listing returned no models; falling back to bundled defaults."
+            )
+            _warned_openrouter_model_listing = True
+        return list(OPENROUTER_DEFAULT_MODELS)
+
+    return list(dict.fromkeys([*OPENROUTER_DEFAULT_MODELS, *models]))
 
 
 def _placeholder_dimensions(
@@ -618,10 +659,228 @@ if IO is not None:
             return IO.NodeOutput(image_tensor, text)
 
 
+    class BetterOpenRouter(IO.ComfyNode):
+        @classmethod
+        def define_schema(cls):
+            return IO.Schema(
+                node_id="BetterOpenRouter",
+                display_name="Better OpenRouter",
+                category="api node/image/BetterOpenRouter",
+                description=(
+                    "Generate or edit images through OpenRouter's dedicated image API."
+                ),
+                not_idempotent=True,
+                inputs=[
+                    IO.String.Input(
+                        "prompt",
+                        multiline=True,
+                        default="",
+                        tooltip="Text prompt for image generation or reference-guided editing.",
+                    ),
+                    IO.Combo.Input(
+                        "model",
+                        options=_openrouter_model_dropdown_options(),
+                        default=OPENROUTER_DEFAULT_MODEL,
+                        tooltip=(
+                            "OpenRouter image model slug. The dropdown is populated from "
+                            "OpenRouter's dedicated image-model discovery API."
+                        ),
+                    ),
+                    IO.String.Input(
+                        "api_key",
+                        optional=True,
+                        default="",
+                        tooltip="Optional. If empty, uses env var OPENROUTER_API_KEY.",
+                    ),
+                    IO.Image.Input(
+                        "prompt_images",
+                        optional=True,
+                        tooltip=(
+                            "Optional reference images for image-to-image generation. The number "
+                            "accepted depends on the selected model."
+                        ),
+                    ),
+                    IO.Combo.Input(
+                        "aspect_ratio",
+                        options=list(OPENROUTER_ASPECT_RATIOS),
+                        default="auto",
+                        tooltip=(
+                            "Requested aspect ratio. Supported values depend on the selected model; "
+                            "explicit width and height take precedence."
+                        ),
+                        optional=True,
+                    ),
+                    IO.Combo.Input(
+                        "resolution",
+                        options=["auto", "512", "1K", "2K", "4K"],
+                        default="auto",
+                        tooltip=(
+                            "Requested resolution tier. Supported tiers depend on the selected model; "
+                            "explicit width and height take precedence."
+                        ),
+                        optional=True,
+                    ),
+                    IO.Int.Input(
+                        "width",
+                        default=0,
+                        min=0,
+                        max=8192,
+                        step=64,
+                        tooltip=(
+                            "Optional explicit output width. Set height too; this is sent as the "
+                            "OpenRouter size parameter."
+                        ),
+                        optional=True,
+                    ),
+                    IO.Int.Input(
+                        "height",
+                        default=0,
+                        min=0,
+                        max=8192,
+                        step=64,
+                        tooltip=(
+                            "Optional explicit output height. Set width too; this is sent as the "
+                            "OpenRouter size parameter."
+                        ),
+                        optional=True,
+                    ),
+                    IO.Combo.Input(
+                        "quality",
+                        options=["auto", "low", "medium", "high"],
+                        default="auto",
+                        tooltip="Requested image quality. Providers without this control may ignore it.",
+                        optional=True,
+                    ),
+                    IO.Combo.Input(
+                        "output_format",
+                        options=["auto", "png", "jpeg", "webp"],
+                        default="auto",
+                        tooltip="Raster output format. SVG is not exposed because ComfyUI IMAGE is raster.",
+                        optional=True,
+                    ),
+                    IO.Combo.Input(
+                        "background",
+                        options=["auto", "transparent", "opaque"],
+                        default="auto",
+                        tooltip=(
+                            "Requested background behavior. Transparent output requires a model and "
+                            "format that support alpha."
+                        ),
+                        optional=True,
+                    ),
+                    IO.Int.Input(
+                        "output_compression",
+                        default=-1,
+                        min=-1,
+                        max=100,
+                        step=1,
+                        tooltip=(
+                            "JPEG/WebP compression from 0 to 100. Use -1 to leave it unset; PNG ignores it."
+                        ),
+                        optional=True,
+                    ),
+                    IO.Int.Input(
+                        "n",
+                        default=1,
+                        min=1,
+                        max=10,
+                        step=1,
+                        tooltip=(
+                            "Number of images to request (up to 10). Individual models may allow fewer."
+                        ),
+                        optional=True,
+                    ),
+                    IO.Int.Input(
+                        "seed",
+                        default=0,
+                        min=0,
+                        max=0xFFFFFFFFFFFFFFFF,
+                        step=1,
+                        control_after_generate=True,
+                        tooltip=(
+                            "Best-effort seed where the selected model supports it. Set 0 for unset."
+                        ),
+                        optional=True,
+                    ),
+                    IO.Boolean.Input(
+                        "cache_outputs",
+                        default=False,
+                        optional=True,
+                        tooltip=(
+                            "Cache model outputs under .cache and reuse them for identical OpenRouter requests."
+                        ),
+                    ),
+                ],
+                outputs=[
+                    IO.Image.Output(),
+                    IO.String.Output(),
+                ],
+            )
+
+        @classmethod
+        async def execute(
+            cls,
+            prompt: str,
+            model: str,
+            api_key: str = "",
+            prompt_images: Any = None,
+            aspect_ratio: str = "auto",
+            resolution: str = "auto",
+            width: int = 0,
+            height: int = 0,
+            quality: str = "auto",
+            output_format: str = "auto",
+            background: str = "auto",
+            output_compression: int = -1,
+            n: int = 1,
+            seed: int = 0,
+            cache_outputs: bool = False,
+        ) -> Any:
+            try:
+                prompt_image_bytes = _comfy_image_to_png_bytes(prompt_images)
+                request = build_openrouter_request(
+                    model=model,
+                    prompt=prompt,
+                    input_images=prompt_image_bytes,
+                    aspect_ratio=aspect_ratio,
+                    resolution=resolution,
+                    width=width,
+                    height=height,
+                    quality=quality,
+                    output_format=output_format,
+                    background=background,
+                    output_compression=output_compression,
+                    n=n,
+                    seed=seed,
+                )
+            except BetterOpenRouterConfigError as e:
+                raise ValueError(str(e)) from e
+
+            text, images = await _get_or_generate_output(
+                cache_outputs=cache_outputs,
+                provider="openrouter",
+                request=request,
+                extra_cache_data=None,
+                generate_fn=lambda: generate_openrouter_images(
+                    api_key=(api_key.strip() or None),
+                    request=request,
+                ),
+            )
+            image_tensor = _bytes_list_to_comfy_image(
+                images,
+                requested_aspect_ratio=request.aspect_ratio,
+                requested_resolution=request.resolution,
+                requested_width=request.image_width,
+                requested_height=request.image_height,
+                provider_label="OpenRouter",
+            )
+            return IO.NodeOutput(image_tensor, text)
+
+
     class BetterGeminiExtension(ComfyExtension):
         @override
         async def get_node_list(self):
-            return [BetterGemini, BetterGrok]
+            return [BetterGemini, BetterGrok, BetterOpenRouter]
 
 
 async def comfy_entrypoint():  # pragma: no cover

@@ -20,3 +20,7 @@
 - xAI `/v1/responses` can reject large outputs unless storage is disabled; send `store=false` for BetterGrok text calls because the node does not reuse xAI-hosted response sessions.
 - Provider output caching should hash canonical request data, not API keys, so cached Gemini and Grok results can skip network calls for identical prompts/settings while keeping credentials out of cache filenames and manifests.
 - Converting to `uv` project workflows works best by declaring dependencies in `pyproject.toml` and using `uv sync` / `uv run` as the default install+test path.
+- OpenRouter's dedicated image API uses `POST /api/v1/images`, returns base64 image data in `data[].b64_json`, and accepts local edit/reference images as nested `input_references[].image_url.url` data URLs.
+- OpenRouter's `/api/v1/images/models` response exposes a model-level union of capability descriptors; individual providers may support narrower parameter ranges, so generic node controls remain best-effort and API errors should surface unchanged.
+- OpenRouter treats explicit pixel `size` as authoritative and rejects a mismatched `resolution` or `aspect_ratio` sent alongside it; normalize width+height requests by omitting the other sizing controls.
+- OpenRouter can return SVG from vector models, but ComfyUI's `IMAGE` type is a raster tensor. Reject SVG responses clearly and expose PNG, JPEG, and WebP formats in the node.
