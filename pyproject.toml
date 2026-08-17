@@ -21,5 +21,8 @@ Repository = "https://github.com/ttulttul/Better-Gemini"
 PublisherId = "ttulttul"
 DisplayName = "ComfyUI-Better-Gemini"
 
+[tool.setuptools.packages.find]
+include = ["better_gemini*"]
+
 [dependency-groups]
 dev = []

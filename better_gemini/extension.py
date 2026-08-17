@@ -22,6 +22,8 @@ from .grok_client import (
     list_models_sync as list_grok_models_sync,
 )
 from .grok_core import BetterGrokConfigError, build_request as build_grok_request
+from .grok_oauth import resolve_grok_credential
+from .grok_oauth_routes import register_oauth_routes
 from .openrouter_client import (
     DEFAULT_MODEL as OPENROUTER_DEFAULT_MODEL,
     DEFAULT_MODELS as OPENROUTER_DEFAULT_MODELS,
@@ -539,7 +541,14 @@ if IO is not None:
                         "api_key",
                         optional=True,
                         default="",
-                        tooltip="Optional. If empty, uses env var XAI_API_KEY.",
+                        tooltip="Optional. Auto mode prefers this key, then a saved xAI OAuth login, then XAI_API_KEY.",
+                    ),
+                    IO.Combo.Input(
+                        "auth_mode",
+                        options=["auto", "oauth", "api_key"],
+                        default="auto",
+                        optional=True,
+                        tooltip="Auto preserves API-key compatibility and uses OAuth when logged in. OAuth requires the Login button in the node header.",
                     ),
                     IO.Combo.Input(
                         "response_modalities",
@@ -616,6 +625,7 @@ if IO is not None:
             prompt: str,
             model: str,
             api_key: str = "",
+            auth_mode: str = "auto",
             response_modalities: str = "IMAGE",
             reasoning_effort: str = "none",
             prompt_images: Any = None,
@@ -639,13 +649,19 @@ if IO is not None:
             except BetterGrokConfigError as e:
                 raise ValueError(str(e)) from e
 
+            resolved_credential = await resolve_grok_credential(
+                api_key=api_key,
+                auth_mode=auth_mode,
+                allow_oauth="IMAGE" in request.response_modalities,
+            )
+
             text, images = await _get_or_generate_output(
                 cache_outputs=cache_outputs,
                 provider="grok",
                 request=request,
                 extra_cache_data=None,
                 generate_fn=lambda: generate_grok_content(
-                    api_key=(api_key.strip() or None),
+                    api_key=resolved_credential,
                     request=request,
                 ),
             )
@@ -886,4 +902,5 @@ if IO is not None:
 async def comfy_entrypoint():  # pragma: no cover
     if IO is None:
         raise RuntimeError("BetterGemini: ComfyUI V3 runtime not available (missing `comfy_api.latest`).")
+    register_oauth_routes()
     return BetterGeminiExtension()

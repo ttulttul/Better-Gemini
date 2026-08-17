@@ -16,10 +16,11 @@ from .grok_core import BetterGrokError, BetterGrokRequest
 logger = logging.getLogger(__name__)
 
 BASE_URL = "https://api.x.ai/v1"
-USER_AGENT = "ComfyUI-Better-Gemini/1.1.1 (https://github.com/ttulttul/Better-Gemini)"
+USER_AGENT = "ComfyUI-Better-Gemini/1.3.0 (https://github.com/ttulttul/Better-Gemini)"
 DEFAULT_MODEL = "grok-imagine-image"
 DEFAULT_IMAGE_MODELS = [
     "grok-imagine-image",
+    "grok-imagine-image-2.0",
     "grok-imagine-image-pro",
     "grok-imagine-image-quality",
 ]
