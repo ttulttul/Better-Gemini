@@ -20,7 +20,7 @@ from .grok_rate_limit import GrokRateLimitError, grok_rate_limit_coordinator
 logger = logging.getLogger(__name__)
 
 BASE_URL = "https://api.x.ai/v1"
-USER_AGENT = "ComfyUI-Better-Gemini/1.4.0 (https://github.com/ttulttul/Better-Gemini)"
+USER_AGENT = "ComfyUI-Better-Gemini/1.5.0 (https://github.com/ttulttul/Better-Gemini)"
 DEFAULT_MODEL = "grok-imagine-image"
 DEFAULT_IMAGE_MODELS = [
     "grok-imagine-image",
