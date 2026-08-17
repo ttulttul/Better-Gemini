@@ -14,6 +14,8 @@ let nodeObserver = null;
 let syncQueued = false;
 let pollingFlowId = null;
 let initiatingNode = null;
+let frontendInitialized = false;
+const fallbackWidgets = new Set();
 
 function toast(severity, summary, detail) {
   app.extensionManager?.toast?.add?.({ severity, summary, detail, life: 7000 });
@@ -72,8 +74,8 @@ function buttonLabel() {
 }
 
 function renderButtons() {
+  const label = buttonLabel();
   document.querySelectorAll(`[${BUTTON_ATTRIBUTE}]`).forEach((button) => {
-    const label = buttonLabel();
     if (button.textContent !== label) button.textContent = label;
     button.dataset.state = authState.authenticated
       ? "authenticated"
@@ -83,6 +85,37 @@ function renderButtons() {
       ? "Remove the saved xAI OAuth login"
       : "Sign in to xAI with device authorization";
   });
+  fallbackWidgets.forEach((widget) => {
+    widget.name = label;
+  });
+}
+
+function installFallbackWidget(node) {
+  if (!isBetterGrokNode(node) || node.__betterGrokOAuthWidget) return;
+  const widget = node.addWidget?.("button", buttonLabel(), null, () => {
+    handleAuthClick(node).catch((error) => {
+      toast("error", "BetterGrok login", error.message);
+      console.error("[BetterGrok OAuth] Login action failed:", error);
+    });
+  });
+  if (!widget) return;
+  node.__betterGrokOAuthWidget = widget;
+  fallbackWidgets.add(widget);
+  node.setSize?.([node.size[0], node.computeSize?.()[1] ?? node.size[1]]);
+  app.graph?.setDirtyCanvas?.(true, true);
+}
+
+function scheduleRendererButton(node) {
+  window.setTimeout(() => {
+    const hasDomNode = [...document.querySelectorAll(".lg-node[data-node-id]")].some(
+      (container) => nodeForContainer(container) === node,
+    );
+    if (hasDomNode) {
+      queueButtonSync();
+    } else {
+      installFallbackWidget(node);
+    }
+  }, 250);
 }
 
 function installButton(container) {
@@ -196,6 +229,14 @@ function installStyles() {
     #${MODAL_ID} button[data-secondary] { background: #52525b; }
   `;
   document.head.append(style);
+}
+
+async function initializeFrontend() {
+  if (frontendInitialized) return;
+  frontendInitialized = true;
+  installStyles();
+  installObserver();
+  await fetchStatus();
 }
 
 function closeLoginModal() {
@@ -319,17 +360,22 @@ async function pollLogin(flowId) {
 app.registerExtension({
   name: "BetterGemini.GrokOAuth",
 
+  async init() {
+    await initializeFrontend();
+  },
+
   async setup() {
-    installStyles();
-    installObserver();
-    await fetchStatus();
+    await initializeFrontend();
   },
 
   async nodeCreated(node) {
-    if (isBetterGrokNode(node)) queueButtonSync();
+    if (isBetterGrokNode(node)) scheduleRendererButton(node);
   },
 
   async afterConfigureGraph() {
     queueButtonSync();
+    for (const node of app.graph?._nodes ?? []) {
+      if (isBetterGrokNode(node)) scheduleRendererButton(node);
+    }
   },
 });
