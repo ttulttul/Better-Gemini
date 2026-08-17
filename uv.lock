@@ -239,7 +239,7 @@ wheels = [
 
 [[package]]
 name = "comfyui-better-gemini"
-version = "1.3.0"
+version = "1.4.0"
 source = { editable = "." }
 dependencies = [
     { name = "google-genai", version = "1.47.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.10'" },
