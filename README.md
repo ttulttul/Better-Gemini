@@ -55,6 +55,22 @@ OAuth credentials are stored server-side under ComfyUI's protected system-user d
 
 The OAuth client follows xAI's Grok-compatible device endpoints at `auth.x.ai` and sends the resulting bearer only to xAI's public Imagine image endpoints. Better Grok `TEXT` mode continues to require an API key because xAI OAuth chat traffic uses a separate CLI-proxy wire contract. This OAuth surface is not documented as a stable public xAI integration API and may require maintenance if xAI changes it.
 
+## xAI Rate Limiting
+
+All Better Grok calls in one ComfyUI process share a thread-safe, per-model request coordinator. By default it starts no more than 5 requests per second and allows no more than 5 logical requests for the same model in flight. Starts are evenly spaced instead of released in one burst. The coordinator retains one minute of attempt timestamps for accounting and removes active entries in a `finally` block after success, terminal failure, retry exhaustion, or eventual completion of a cancelled coroutine's worker thread.
+
+An xAI `429 Too Many Requests` response pauses the whole model bucket, then retries with exponential backoff and jitter. `Retry-After` is honored when xAI supplies it. The default is five retries after the initial attempt, with delays based on 1, 2, 4, 8, and 16 seconds and a 30-second cap.
+
+Restart ComfyUI after changing any of these optional environment settings:
+
+- `BETTER_GROK_MAX_RPS` (default `5`)
+- `BETTER_GROK_MAX_IN_FLIGHT` (default `5`)
+- `BETTER_GROK_MAX_RETRIES` (default `5`)
+- `BETTER_GROK_BACKOFF_BASE_SECONDS` (default `1`)
+- `BETTER_GROK_BACKOFF_MAX_SECONDS` (default `30`)
+
+Keep the configured RPS below the personalized per-model limit shown in the xAI Console. Coordination is process-local; separate ComfyUI processes or other clients using the same xAI team can still consume the team's shared capacity and trigger adaptive 429 backoff.
+
 ### Better OpenRouter
 
 - Inputs: prompt, OpenRouter image model, optional reference images, aspect ratio, resolution tier or explicit width+height, quality, raster output format, background, compression, image count, seed, optional output caching
@@ -101,6 +117,7 @@ Recommended text-only examples:
 - Grok image generation is wired against xAI's documented image endpoints and requests `response_format="b64_json"`, so the node can return image tensors directly instead of downloading temporary URLs.
 - The Grok HTTP client sends an explicit application `User-Agent` because `api.x.ai` can reject the default `Python-urllib` signature with Cloudflare 1010.
 - Grok image edits use xAI's JSON-based `/v1/images/edits` API and send ComfyUI `IMAGE` inputs as PNG data URIs. Multiple prompt images are supported for edit and merge workflows.
+- Grok inference calls share a process-wide, thread-safe per-model coordinator that spaces request starts, caps in-flight work, tracks recent attempts, and coordinates bounded 429 retries across parallel ComfyUI executions.
 - Better Grok's Login button uses xAI device authorization at `auth.x.ai`; the browser sees only the verification URL and user code, while access and refresh tokens stay in ComfyUI's protected server-side system-user storage.
 - The OAuth frontend initializes during ComfyUI's early `init` lifecycle (with an idempotent `setup` fallback), so an unrelated malformed node definition cannot prevent the Login button from being installed. Nodes 2.0 places it in the DOM title bar; the canvas renderer receives an equivalent ComfyUI button widget in the node body.
 - OAuth refresh is deduplicated across concurrent workflow runs. Near-expiry tokens refresh in an asynchronous background task; expired tokens block only until the refresh completes, preventing an avoidable request with an expired bearer.

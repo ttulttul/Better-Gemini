@@ -1,27 +1,32 @@
 import base64
+import io
 import os
 import unittest
 from unittest import mock
+from urllib.error import HTTPError
 
+from better_gemini import grok_client
 from better_gemini.grok_client import (
+    _MODEL_LIST_CACHE,
     DEFAULT_MODEL,
     DEFAULT_MODELS,
     DEFAULT_TEXT_MODELS,
     USER_AGENT,
-    _MODEL_LIST_CACHE,
     _build_headers,
     _build_image_request,
     _build_text_input,
     _build_text_request,
     _extract_chat_text,
     _extract_responses_text,
+    _request_json_once,
     generate_content,
-    generate_sync,
     generate_images_sync,
+    generate_sync,
     generate_text_sync,
     list_models_sync,
 )
 from better_gemini.grok_core import BetterGrokError, BetterGrokRequest
+from better_gemini.grok_rate_limit import GrokRateLimitError, GrokRequestCancelled
 
 
 class GrokClientTests(unittest.TestCase):
@@ -38,6 +43,48 @@ class GrokClientTests(unittest.TestCase):
         self.assertEqual(headers["User-Agent"], USER_AGENT)
         self.assertEqual(headers["Accept-Encoding"], "identity")
         self.assertEqual(headers["Content-Type"], "application/json")
+
+    def test_request_json_once_exposes_429_for_coordinated_retry(self):
+        error = HTTPError(
+            url="https://api.x.ai/v1/images/generations",
+            code=429,
+            msg="Too Many Requests",
+            hdrs={"Retry-After": "2.5"},
+            fp=io.BytesIO(
+                b'{"code":"resource-exhausted","error":"Too many requests"}'
+            ),
+        )
+        with mock.patch(
+            "better_gemini.grok_client.urlopen", side_effect=error
+        ), self.assertRaises(GrokRateLimitError) as raised:
+            _request_json_once(
+                method="POST",
+                path="/images/generations",
+                api_key="k",
+                payload={"model": "grok-imagine-image-quality"},
+            )
+
+        self.assertEqual(raised.exception.retry_after_seconds, 2.5)
+        self.assertIn("Too many requests", str(raised.exception))
+
+    def test_request_json_uses_model_scoped_process_coordinator(self):
+        with mock.patch(
+            "better_gemini.grok_client._request_json_once",
+            return_value={"data": []},
+        ), mock.patch.object(
+            grok_client.grok_rate_limit_coordinator,
+            "execute",
+            side_effect=lambda *, model, operation: operation(),
+        ) as execute:
+            response = grok_client._request_json(
+                method="POST",
+                path="/images/generations",
+                api_key="k",
+                payload={"model": "grok-imagine-image-quality"},
+            )
+
+        self.assertEqual(response, {"data": []})
+        self.assertEqual(execute.call_args.kwargs["model"], "grok-imagine-image-quality")
 
 
     def test_list_models_sync_parses_ids_and_aliases(self):
@@ -297,6 +344,41 @@ class GrokClientTests(unittest.TestCase):
             generate.assert_called_once()
 
         import asyncio
+
+        asyncio.run(run_test())
+
+    def test_generate_content_signals_worker_when_coroutine_is_cancelled(self):
+        async def run_test():
+            started = threading.Event()
+            cancellation_seen = threading.Event()
+
+            def generate(*, _cancel_event, **kwargs):
+                started.set()
+                _cancel_event.wait(timeout=1)
+                if _cancel_event.is_set():
+                    cancellation_seen.set()
+                    raise GrokRequestCancelled("cancelled")
+                return "late", []
+
+            with mock.patch("better_gemini.grok_client.generate_sync", side_effect=generate):
+                task = asyncio.create_task(
+                    generate_content(
+                        api_key="k",
+                        request=BetterGrokRequest(
+                            model="grok-4",
+                            prompt="Explain",
+                            response_modalities=("TEXT",),
+                        ),
+                    )
+                )
+                self.assertTrue(await asyncio.to_thread(started.wait, 1))
+                task.cancel()
+                with self.assertRaises(asyncio.CancelledError):
+                    await task
+                self.assertTrue(await asyncio.to_thread(cancellation_seen.wait, 1))
+
+        import asyncio
+        import threading
 
         asyncio.run(run_test())
 

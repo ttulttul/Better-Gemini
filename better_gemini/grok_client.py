@@ -6,17 +6,21 @@ import hashlib
 import json
 import logging
 import os
+import threading
 import time
-from typing import Any
+from datetime import datetime, timezone
+from email.utils import parsedate_to_datetime
+from typing import Any, Callable
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
 from .grok_core import BetterGrokError, BetterGrokRequest
+from .grok_rate_limit import GrokRateLimitError, grok_rate_limit_coordinator
 
 logger = logging.getLogger(__name__)
 
 BASE_URL = "https://api.x.ai/v1"
-USER_AGENT = "ComfyUI-Better-Gemini/1.3.0 (https://github.com/ttulttul/Better-Gemini)"
+USER_AGENT = "ComfyUI-Better-Gemini/1.4.0 (https://github.com/ttulttul/Better-Gemini)"
 DEFAULT_MODEL = "grok-imagine-image"
 DEFAULT_IMAGE_MODELS = [
     "grok-imagine-image",
@@ -54,11 +58,13 @@ def _extract_error_message(body: str) -> str:
         return "empty error response"
     try:
         payload = json.loads(body)
-    except Exception:
+    except json.JSONDecodeError:
         return body.strip() or "empty error response"
 
     if isinstance(payload, dict):
         error = payload.get("error")
+        if isinstance(error, str) and error.strip():
+            return error.strip()
         if isinstance(error, dict):
             message = error.get("message") or error.get("error")
             if isinstance(message, str) and message.strip():
@@ -75,7 +81,7 @@ def _extract_error_payload(body: str) -> dict[str, Any] | None:
         return None
     try:
         payload = json.loads(body)
-    except Exception:
+    except json.JSONDecodeError:
         return None
     return payload if isinstance(payload, dict) else None
 
@@ -92,7 +98,26 @@ def _build_headers(*, api_key: str, has_payload: bool) -> dict[str, str]:
     return headers
 
 
-def _request_json(
+def _retry_after_seconds(headers: Any) -> float | None:
+    if headers is None:
+        return None
+    raw_value = headers.get("Retry-After")
+    if not isinstance(raw_value, str) or not raw_value.strip():
+        return None
+    value = raw_value.strip()
+    try:
+        return max(0.0, float(value))
+    except ValueError:
+        try:
+            retry_at = parsedate_to_datetime(value)
+        except (TypeError, ValueError, OverflowError):
+            return None
+        if retry_at.tzinfo is None:
+            retry_at = retry_at.replace(tzinfo=timezone.utc)
+        return max(0.0, (retry_at - datetime.now(timezone.utc)).total_seconds())
+
+
+def _request_json_once(
     *,
     method: str,
     path: str,
@@ -116,6 +141,12 @@ def _request_json(
         message = _extract_error_message(body)
         logger.error("xAI API request failed: %s %s -> %s", method, path, message)
 
+        if e.code == 429:
+            raise GrokRateLimitError(
+                f"xAI API request failed (429) for {path}: {message}",
+                retry_after_seconds=_retry_after_seconds(e.headers),
+            ) from e
+
         if (
             e.code == 403
             and isinstance(error_payload, dict)
@@ -136,6 +167,34 @@ def _request_json(
     if not body.strip():
         return {}
     return json.loads(body)
+
+
+def _request_json(
+    *,
+    method: str,
+    path: str,
+    api_key: str,
+    payload: dict[str, Any] | None = None,
+    timeout_s: float = 120.0,
+    _cancel_event: threading.Event | None = None,
+) -> Any:
+    model = payload.get("model") if isinstance(payload, dict) else None
+    bucket = model if isinstance(model, str) and model.strip() else path
+    execute_kwargs: dict[str, Any] = {
+        "model": bucket,
+        "operation": lambda: _request_json_once(
+            method=method,
+            path=path,
+            api_key=api_key,
+            payload=payload,
+            timeout_s=timeout_s,
+        ),
+    }
+    if _cancel_event is not None:
+        execute_kwargs["cancel_event"] = _cancel_event
+    return grok_rate_limit_coordinator.execute(
+        **execute_kwargs,
+    )
 
 
 def _parse_model_names(payload: Any) -> list[str]:
@@ -314,7 +373,12 @@ def _decode_b64_json(item: Any) -> bytes | None:
     return base64.b64decode(b64_payload)
 
 
-def generate_images_sync(*, api_key: str | None, request: BetterGrokRequest) -> tuple[str, list[bytes]]:
+def generate_images_sync(
+    *,
+    api_key: str | None,
+    request: BetterGrokRequest,
+    _cancel_event: threading.Event | None = None,
+) -> tuple[str, list[bytes]]:
     resolved_api_key = api_key or _first_env("XAI_API_KEY")
     if not resolved_api_key:
         raise BetterGrokError("No API key provided. Set `XAI_API_KEY` or pass `api_key`.")
@@ -327,7 +391,15 @@ def generate_images_sync(*, api_key: str | None, request: BetterGrokRequest) -> 
         request.n,
         len(request.input_images),
     )
-    response = _request_json(method="POST", path=path, api_key=resolved_api_key, payload=payload)
+    request_kwargs: dict[str, Any] = {
+        "method": "POST",
+        "path": path,
+        "api_key": resolved_api_key,
+        "payload": payload,
+    }
+    if _cancel_event is not None:
+        request_kwargs["_cancel_event"] = _cancel_event
+    response = _request_json(**request_kwargs)
     data = response.get("data") if isinstance(response, dict) else None
     if not isinstance(data, list):
         data = []
@@ -363,7 +435,12 @@ def generate_images_sync(*, api_key: str | None, request: BetterGrokRequest) -> 
     return "\n\n".join(notes).strip(), images
 
 
-def generate_text_sync(*, api_key: str | None, request: BetterGrokRequest) -> tuple[str, list[bytes]]:
+def generate_text_sync(
+    *,
+    api_key: str | None,
+    request: BetterGrokRequest,
+    _cancel_event: threading.Event | None = None,
+) -> tuple[str, list[bytes]]:
     resolved_api_key = api_key or _first_env("XAI_API_KEY")
     if not resolved_api_key:
         raise BetterGrokError("No API key provided. Set `XAI_API_KEY` or pass `api_key`.")
@@ -375,7 +452,15 @@ def generate_text_sync(*, api_key: str | None, request: BetterGrokRequest) -> tu
         request.reasoning_effort,
         len(request.input_images),
     )
-    response = _request_json(method="POST", path="/responses", api_key=resolved_api_key, payload=payload)
+    request_kwargs: dict[str, Any] = {
+        "method": "POST",
+        "path": "/responses",
+        "api_key": resolved_api_key,
+        "payload": payload,
+    }
+    if _cancel_event is not None:
+        request_kwargs["_cancel_event"] = _cancel_event
+    response = _request_json(**request_kwargs)
     model_used, text = _extract_responses_text(response)
     if text:
         return text, []
@@ -389,15 +474,52 @@ def generate_text_sync(*, api_key: str | None, request: BetterGrokRequest) -> tu
     return message, []
 
 
-def generate_sync(*, api_key: str | None, request: BetterGrokRequest) -> tuple[str, list[bytes]]:
+def generate_sync(
+    *,
+    api_key: str | None,
+    request: BetterGrokRequest,
+    _cancel_event: threading.Event | None = None,
+) -> tuple[str, list[bytes]]:
     if "IMAGE" in request.response_modalities:
-        return generate_images_sync(api_key=api_key, request=request)
-    return generate_text_sync(api_key=api_key, request=request)
+        return generate_images_sync(
+            api_key=api_key,
+            request=request,
+            _cancel_event=_cancel_event,
+        )
+    return generate_text_sync(
+        api_key=api_key,
+        request=request,
+        _cancel_event=_cancel_event,
+    )
+
+
+async def _run_sync_with_cancellation(
+    function: Callable[..., tuple[str, list[bytes]]],
+    **kwargs: Any,
+) -> tuple[str, list[bytes]]:
+    cancel_event = threading.Event()
+    try:
+        return await asyncio.to_thread(
+            function,
+            **kwargs,
+            _cancel_event=cancel_event,
+        )
+    except asyncio.CancelledError:
+        cancel_event.set()
+        raise
 
 
 async def generate_images(*, api_key: str | None, request: BetterGrokRequest) -> tuple[str, list[bytes]]:
-    return await asyncio.to_thread(generate_images_sync, api_key=api_key, request=request)
+    return await _run_sync_with_cancellation(
+        generate_images_sync,
+        api_key=api_key,
+        request=request,
+    )
 
 
 async def generate_content(*, api_key: str | None, request: BetterGrokRequest) -> tuple[str, list[bytes]]:
-    return await asyncio.to_thread(generate_sync, api_key=api_key, request=request)
+    return await _run_sync_with_cancellation(
+        generate_sync,
+        api_key=api_key,
+        request=request,
+    )
