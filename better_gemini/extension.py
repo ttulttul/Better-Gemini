@@ -652,7 +652,6 @@ if IO is not None:
             resolved_credential = await resolve_grok_credential(
                 api_key=api_key,
                 auth_mode=auth_mode,
-                allow_oauth="IMAGE" in request.response_modalities,
             )
 
             text, images = await _get_or_generate_output(

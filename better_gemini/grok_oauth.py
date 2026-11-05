@@ -592,7 +592,6 @@ async def resolve_grok_credential(
     *,
     api_key: str,
     auth_mode: str,
-    allow_oauth: bool = True,
 ) -> str | None:
     mode = auth_mode.strip().lower().replace(" ", "_")
     explicit_key = api_key.strip()
@@ -603,14 +602,11 @@ async def resolve_grok_credential(
     if mode == "api_key":
         return explicit_key or None
     if mode == "oauth":
-        if not allow_oauth:
-            raise GrokOAuthError(
-                "BetterGrok OAuth is available for xAI Imagine image requests. "
-                "Use API key authentication for TEXT mode."
-            )
+        logger.debug("Resolving BetterGrok credential from xAI OAuth login.")
         return await oauth_manager.get_access_token()
     if explicit_key:
         return explicit_key
-    if allow_oauth and oauth_manager.has_credentials():
+    if oauth_manager.has_credentials():
+        logger.debug("Using saved BetterGrok xAI OAuth login (auto mode).")
         return await oauth_manager.get_access_token()
     return None
