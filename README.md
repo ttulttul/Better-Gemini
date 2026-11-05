@@ -18,7 +18,7 @@ This repo provides three nodes:
    - `uv pip install --python /path/to/ComfyUI/python/bin/python -e ./ComfyUI-Better-Gemini`
 3. Set API keys as needed:
    - `export GOOGLE_API_KEY="..."` or `export GEMINI_API_KEY="..."`
-   - `export XAI_API_KEY="..."` (optional for Grok Imagine after OAuth login)
+   - `export XAI_API_KEY="..."` (optional for Grok after OAuth login)
    - `export OPENROUTER_API_KEY="..."`
 4. Restart ComfyUI.
 
@@ -38,7 +38,7 @@ This repo provides three nodes:
 
 ## xAI OAuth Login
 
-Better Grok can use xAI device authorization for Imagine image generation and editing without storing an API key in the workflow:
+Better Grok can use xAI device authorization for Imagine image generation/editing and `TEXT` mode (Responses API) without storing an API key in the workflow:
 
 1. Add or open a Better Grok node with ComfyUI's V3 node renderer.
 2. Click `Login` in the node header.
@@ -47,13 +47,13 @@ Better Grok can use xAI device authorization for Imagine image generation and ed
 
 Authentication modes:
 
-- `auto` preserves existing workflows: an inline API key wins, then a saved OAuth login is used for Imagine requests, then `XAI_API_KEY` remains the fallback.
+- `auto` preserves existing workflows: an inline API key wins, then a saved OAuth login is used (for both image and text requests), then `XAI_API_KEY` remains the fallback.
 - `oauth` requires a completed node-header login and never uses the API-key field.
 - `api_key` uses the inline key or `XAI_API_KEY` and ignores saved OAuth credentials.
 
 OAuth credentials are stored server-side under ComfyUI's protected system-user directory (`user/__better_gemini/xai_oauth.json`), not in workflows or browser storage. The directory and token file use private permissions where the platform supports them. Each workflow run checks token expiry asynchronously; near-expiry credentials refresh in the background, while an already expired token is refreshed before the xAI request is sent. `Logout` cancels pending login/refresh work and deletes the stored credentials.
 
-The OAuth client follows xAI's Grok-compatible device endpoints at `auth.x.ai` and sends the resulting bearer only to xAI's public Imagine image endpoints. Better Grok `TEXT` mode continues to require an API key because xAI OAuth chat traffic uses a separate CLI-proxy wire contract. This OAuth surface is not documented as a stable public xAI integration API and may require maintenance if xAI changes it.
+The OAuth client follows xAI's Grok-compatible device endpoints at `auth.x.ai` and sends the resulting bearer to xAI's public `api.x.ai` endpoints: the Imagine image endpoints and `/v1/responses` for `TEXT` mode. This OAuth surface is not documented as a stable public xAI integration API and may require maintenance if xAI changes it.
 
 ## xAI Rate Limiting
 

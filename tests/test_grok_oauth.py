@@ -326,13 +326,26 @@ class CredentialResolutionTests(unittest.IsolatedAsyncioTestCase):
         )
         self.assertIsNone(token)
 
-    async def test_oauth_mode_rejects_text_only_public_api_route(self):
-        with self.assertRaisesRegex(grok_oauth.GrokOAuthError, "Imagine image requests"):
-            await grok_oauth.resolve_grok_credential(
-                api_key="",
-                auth_mode="oauth",
-                allow_oauth=False,
+    async def test_auto_mode_uses_saved_oauth_login_without_api_key(self):
+        fake_manager = mock.Mock()
+        fake_manager.has_credentials.return_value = True
+        fake_manager.get_access_token = mock.AsyncMock(return_value="oauth-access")
+        with mock.patch.object(grok_oauth, "oauth_manager", fake_manager):
+            token = await grok_oauth.resolve_grok_credential(
+                api_key="", auth_mode="auto"
             )
+        self.assertEqual(token, "oauth-access")
+
+    async def test_auto_mode_prefers_inline_api_key_over_oauth(self):
+        fake_manager = mock.Mock()
+        fake_manager.has_credentials.return_value = True
+        fake_manager.get_access_token = mock.AsyncMock(return_value="oauth-access")
+        with mock.patch.object(grok_oauth, "oauth_manager", fake_manager):
+            token = await grok_oauth.resolve_grok_credential(
+                api_key="inline-key", auth_mode="auto"
+            )
+        self.assertEqual(token, "inline-key")
+        fake_manager.get_access_token.assert_not_called()
 
 
 class FrontendContractTests(unittest.TestCase):
